@@ -13,7 +13,10 @@ It is part of the **Codex** suite, alongside [Codex Navigator](https://github.co
 ## What it does
 
 - **Rotation, read for you.** Wave 1 narrows the 15 rotations to three and wave 2 almost always settles it; rotations 7 and 8 look the same until wave 4, and the panel says so. No clicking spawn buttons or pressing "next" every wave. Rejoin a run after logging out and it picks up where it was.
-- **Where to stand.** Creatures in the cave walk straight at you with no path finding, which is why pillars work. The pilot plays that walk out for every creature and every tile you could reach, using the cave's real collision and line of sight, and gilds the tile where the fewest can hit you: rangers and magers stuck out of sight, melee creatures stuck where you can still shoot them, and the rest arriving one at a time rather than together. The panel lists what each creature will do if you stand there ("Mager: stuck, cannot see you", "Melee: reaches you in 6 ticks").
+- **Where to stand.** Creatures in the cave walk straight at you with no path finding, which is why pillars work. The pilot plays that walk out for every creature and every tile you could reach, using the cave's real collision and line of sight, and gilds the tile where the fewest can hit you: rangers and magers stuck out of sight, melee creatures stuck where you can still shoot them, and the rest arriving one at a time rather than together. It also avoids tiles where two attack styles reach you at once, since one prayer cannot block both, tiles where a ranger or mager ends up beside you and switches to melee, and letting a Tz-Kek die on top of you, where its two halves start on you at once. The panel lists what each creature will do if you stand there ("Mager: stuck, cannot see you", "Melee: reaches you in 6 ticks").
+- **Kill order.** A numbered gilt seal over each creature says what to kill first. Whatever hits you comes first, ordered by how much damage it deals for every hitpoint it takes to kill, so the weak creature hitting hard dies before the strong one hitting softly. Your protection prayer counts: what it blocks can wait. Bats come early because they drain prayer even through it, a Yt-MejKot jumps the queue once anything else is below half health because it heals them, and a Tz-Kek is weighed with the two halves it splits into. After that come creatures stuck where you can hit them, deadliest first. Nothing is shown on the Jad wave.
+- **The prayer to use.** From where you stand, the pilot works out which protection prayer blocks the most of what can hit you in the next couple of ticks, and shows it on the plaque and in the panel, with a nudge when it is not on. A ranger or mager beside you counts as melee, since that is how they hit up close. When two styles are hitting you at once it says so, because no prayer covers both and the gilt tile is where to lose one. Nothing is shown on the Jad wave.
+- **Your weapon's reach.** The pilot reads what you wield, so a blowpipe, a crossbow, a longbow and a staff each get the tiles they can really hit a stuck creature from.
 - **Follow the fight.** During a wave the tile is re-worked from where the creatures really are, and only moves when a new tile is clearly safer, so it does not flicker.
 - **The next wave.** As a wave draws to a close, dashed outlines on the floor show where the next wave's creatures will appear, coloured by the prayer that answers them, and a teal tile shows where to be standing when they do.
 - **Stuck tags.** A small "Stuck" tag floats over any ranger or mager that cannot hit you where you stand.
@@ -33,7 +36,7 @@ It is part of the **Codex** suite, alongside [Codex Navigator](https://github.co
 
 ## How it reads the cave
 
-The cave's spawn points (north-west, centre, south-west, south and south-east) start as estimates from the cave's outline. Each wave read cleanly against a known rotation pins its spawn points to the tiles creatures really used, and records which creature stood where, so the pilot gets more exact the more you play. A rotation is never ruled out for good: one misread spawn cannot leave it without an answer, and the panel says when a wave disagreed.
+The cave's five spawn points (north-west, centre, south-west, south and south-east) start on their known tiles, so the very first wave is placed exactly. Each wave read cleanly against a known rotation nudges its spawn points to the tiles creatures really used, and records which creature stood where, so a spawn the game ever moves by a tile or two still lines up. A rotation is never ruled out for good: one misread spawn cannot leave it without an answer, and the panel says when a wave disagreed.
 
 The wave ladder (which creatures each wave holds) is worked out from the cave's own rule rather than typed in. The rotation table lists the spawn points for every wave of every rotation as players number them.
 
@@ -41,7 +44,7 @@ The wave ladder (which creatures each wave holds) is worked out from the cave's 
 
 Codex Fight Caves Pilot only reads what the game already shows you: where creatures appear, the cave's collision map, your prayer and your inventory. It does not click, change menus, or send anything over the network.
 
-It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper because it took the challenge out of the fight, so on wave 63 the pilot steps back: no tile, no prayer cues, just "watch him, not the panel". Everything it does offer, from wave spawn charts to safespot tiles, is the same kind of help the community's rotation guides and RuneLite's own Inferno plugin give.
+It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper because it took the challenge out of the fight, so on wave 63 the pilot steps back: no tile, no prayer to use, no kill order, just "watch him, not the panel". Everything it does offer, from wave spawn charts to safespot tiles, is the same kind of help the community's rotation guides and RuneLite's own Inferno plugin give.
 
 ## Development
 
@@ -50,7 +53,7 @@ It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper becau
 ./gradlew run     # launch RuneLite with the plugin loaded
 ```
 
-The rotation tracker, wave ladder, collision and line of sight rules, stand planner and prayer pacer (`core/`) are plain Java with unit tests; the panel and overlays are in `ui/` and `overlay/`. The step and line of sight rules are ported from RuneLite's `WorldArea`.
+The rotation tracker, wave ladder, collision and line of sight rules, stand planner, kill order, prayer call, weapon reach and prayer pacer (`core/`) are plain Java with unit tests; the panel and overlays are in `ui/` and `overlay/`. The step and line of sight rules are ported from RuneLite's `WorldArea`.
 
 ## Licence
 

@@ -1,29 +1,29 @@
 package com.codex.fightcaves.core;
 
 /**
- * The cave's five spawn points, with where each sits in the cave as a fraction of its width
- * and height (0,0 is the south-west corner). The fractions only place a spawn until the pilot
- * has seen a creature appear there; after that it uses the tile it saw.
+ * The cave's five spawn points. Each is the tile a creature's south-west corner appears on,
+ * counted from the south-west corner of the cave's map square (region 9551), so it holds for
+ * every copy of the cave.
  */
 public enum Spawn
 {
-	NW("North-west", "NW", 0.13, 0.86),
-	C("Centre", "C", 0.50, 0.50),
-	SE("South-east", "SE", 0.86, 0.13),
-	S("South", "S", 0.50, 0.08),
-	SW("South-west", "SW", 0.13, 0.13);
+	NW("North-west", "NW", 13, 49),
+	C("Centre", "C", 32, 32),
+	SE("South-east", "SE", 51, 27),
+	S("South", "S", 37, 17),
+	SW("South-west", "SW", 14, 17);
 
 	private final String label;
 	private final String code;
-	private final double fx;
-	private final double fy;
+	private final int tileX;
+	private final int tileY;
 
-	Spawn(String label, String code, double fx, double fy)
+	Spawn(String label, String code, int tileX, int tileY)
 	{
 		this.label = label;
 		this.code = code;
-		this.fx = fx;
-		this.fy = fy;
+		this.tileX = tileX;
+		this.tileY = tileY;
 	}
 
 	public String getLabel()
@@ -36,14 +36,27 @@ public enum Spawn
 		return code;
 	}
 
+	/** The spawn tile, counted from the west edge of the cave's map square. */
+	public int getTileX()
+	{
+		return tileX;
+	}
+
+	/** The spawn tile, counted from the south edge of the cave's map square. */
+	public int getTileY()
+	{
+		return tileY;
+	}
+
+	/** Where the spawn sits on the cave chart, as fractions of the floor's width and height. */
 	public double getFx()
 	{
-		return fx;
+		return CaveMap.fx(tileX + 1);
 	}
 
 	public double getFy()
 	{
-		return fy;
+		return CaveMap.fy(tileY + 1);
 	}
 
 	public static Spawn ofCode(String code)

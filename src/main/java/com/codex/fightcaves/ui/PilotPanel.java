@@ -237,6 +237,28 @@ public class PilotPanel extends PluginPanel
 			stack.add(card);
 		}
 
+		if (view.call != null || !view.kills.isEmpty())
+		{
+			stack.add(new SectionHeader("The fight", "from where you stand"));
+			Card card = new Card(new BorderLayout(0, 6));
+			if (view.call != null)
+			{
+				card.add(callBlock(view.call), BorderLayout.NORTH);
+			}
+			if (!view.kills.isEmpty())
+			{
+				StackPanel rows = new StackPanel(2, 0);
+				rows.add(Ui.label("KILL ORDER", Theme.small(), Theme.GOLD_DIM));
+				for (int i = 0; i < view.kills.size(); i++)
+				{
+					rows.add(new KillRow(i + 1, view.kills.get(i)));
+				}
+				card.add(rows, BorderLayout.CENTER);
+			}
+			card.accent(view.call != null ? Theme.of(view.call.prayer) : Theme.GOLD);
+			stack.add(card);
+		}
+
 		if (view.pace != null)
 		{
 			stack.add(new SectionHeader("Prayer", view.paceLearned ? "your rate" : "first guess"));
@@ -269,6 +291,31 @@ public class PilotPanel extends PluginPanel
 		tiles.add(new StatTile(view.prayer + "/" + view.prayerLevel, "Prayer", view.pace == null ? "" : "sip at " + view.pace.getDrinkBelow(), Theme.TEAL));
 		stack.add(tiles);
 		replace(pilot, stack);
+	}
+
+	/** The protection prayer to use: its name in the colour of what it answers, and whether it is on. */
+	private static JComponent callBlock(View.Call call)
+	{
+		JPanel block = new JPanel(new BorderLayout(0, 1));
+		block.setOpaque(false);
+		java.awt.Color color = Theme.of(call.prayer);
+		block.add(Ui.label(call.prayer.getName(), Theme.title(), color), BorderLayout.NORTH);
+		List<String> names = new java.util.ArrayList<>();
+		for (com.codex.fightcaves.core.Monster m : call.answered)
+		{
+			String name = m.getNickname().toLowerCase();
+			if (!names.contains(name))
+			{
+				names.add(name);
+			}
+		}
+		String text = (call.up ? "On. " : "Switch to it. ") + "Blocks the " + String.join(" and the ", names) + ".";
+		if (call.also != null)
+		{
+			text += " " + call.also.getShortName() + " is hitting too: step to the gilt tile to lose it.";
+		}
+		block.add(Ui.wrapped(text, Theme.small(), call.up ? Theme.TEXT_MUTED : Theme.mix(Theme.TEXT_MUTED, color, 0.5), WIDTH - 40), BorderLayout.CENTER);
+		return block;
 	}
 
 	private Card rotationCard()

@@ -105,6 +105,20 @@ public final class Theme
 		}
 	}
 
+	/** A protection prayer, in the colour of the creatures it answers. */
+	public static Color of(com.codex.fightcaves.core.Protect p)
+	{
+		switch (p)
+		{
+			case MISSILES:
+				return GREEN;
+			case MAGIC:
+				return VIOLET;
+			default:
+				return EMBER;
+		}
+	}
+
 	/** How the run's prayer is holding up, as a colour. */
 	public static Color of(com.codex.fightcaves.core.PrayerPacer.State state)
 	{

@@ -61,7 +61,7 @@ public class ChaseTest
 	{
 		Grid g = pillarFloor();
 		StandPlanner.Spot spot = StandPlanner.plan(g,
-			Collections.singletonList(new StandPlanner.Foe(Monster.KET_ZEK, 4, 13)), 20, 6);
+			Collections.singletonList(new StandPlanner.Foe(Monster.KET_ZEK, 4, 13)), 20, 6, 7);
 		assertNotNull(spot);
 		assertTrue(spot.safeFromRange());
 	}
@@ -72,7 +72,7 @@ public class ChaseTest
 		Grid g = pillarFloor();
 		StandPlanner.Spot spot = StandPlanner.score(g, Arrays.asList(
 			new StandPlanner.Foe(Monster.TZ_KIH, 3, 3),
-			new StandPlanner.Foe(Monster.KET_ZEK, 4, 20)), 10, 22, 0);
+			new StandPlanner.Foe(Monster.KET_ZEK, 4, 20)), 10, 22, 0, 7);
 		assertEquals(Monster.KET_ZEK, spot.getOutcomes().get(0).getFoe().getMonster());
 		assertEquals(2, spot.getOutcomes().size());
 	}

@@ -22,8 +22,9 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
  * Draws on the cave floor: the gilt tile to stand on (teal while it is where to be for the wave
- * about to spawn), dashed outlines where the next wave will appear, and a tag over any ranger
- * or mager stuck behind a pillar.
+ * about to spawn), dashed outlines where the next wave will appear, a numbered seal over each
+ * creature giving its place in the kill order, and a tag over any ranger or mager stuck behind
+ * a pillar.
  */
 public class CaveOverlay extends Overlay
 {
@@ -108,26 +109,51 @@ public class CaveOverlay extends Overlay
 			}
 		}
 
-		for (NPC npc : m.stuck)
+		java.util.Set<NPC> tagged = new java.util.LinkedHashSet<>(m.ranks.keySet());
+		tagged.addAll(m.stuck);
+		FontMetrics fm = g.getFontMetrics();
+		for (NPC npc : tagged)
 		{
 			if (npc == null || npc.isDead())
 			{
 				continue;
 			}
-			String label = "Stuck";
-			Point text = npc.getCanvasTextLocation(g, label, npc.getLogicalHeight() + 40);
-			if (text == null)
+			Integer rank = m.ranks.get(npc);
+			boolean stuck = m.stuck.contains(npc);
+			String label = stuck ? "Stuck" : "";
+			Point anchor = npc.getCanvasTextLocation(g, label.isEmpty() ? "0" : label, npc.getLogicalHeight() + 40);
+			if (anchor == null)
 			{
 				continue;
 			}
-			FontMetrics fm = g.getFontMetrics();
-			Rectangle pill = new Rectangle(text.getX() - 4, text.getY() - fm.getAscent() - 1, fm.stringWidth(label) + 8, fm.getHeight() + 1);
-			g.setColor(Theme.alpha(Theme.INK_DEEP, 190));
-			g.fillRoundRect(pill.x, pill.y, pill.width, pill.height, 6, 6);
-			g.setStroke(new BasicStroke(1f));
-			g.setColor(Theme.alpha(Theme.TEAL, 200));
-			g.drawRoundRect(pill.x, pill.y, pill.width, pill.height, 6, 6);
-			Ui.shadowed(g, label, text.getX(), text.getY(), Theme.TEAL);
+			int d = fm.getHeight() + 3;
+			int textWidth = label.isEmpty() ? 0 : fm.stringWidth(label) + 8;
+			int total = (rank != null ? d : 0) + (rank != null && stuck ? 3 : 0) + textWidth;
+			int x = anchor.getX() + (label.isEmpty() ? fm.stringWidth("0") / 2 : fm.stringWidth(label) / 2) - total / 2;
+			int top = anchor.getY() - fm.getAscent() - 2;
+			if (rank != null)
+			{
+				// A gilt seal with the creature's place in the kill order.
+				Color seal = rank == 1 ? Theme.GOLD_BRIGHT : Theme.GOLD;
+				g.setColor(Theme.alpha(Theme.INK_DEEP, 210));
+				g.fillOval(x, top, d, d);
+				g.setStroke(new BasicStroke(rank == 1 ? 1.8f : 1.2f));
+				g.setColor(seal);
+				g.drawOval(x, top, d, d);
+				String n = String.valueOf(rank);
+				Ui.shadowed(g, n, x + (d - fm.stringWidth(n)) / 2 + 1, top + (d + fm.getAscent()) / 2 - 1, seal);
+				x += d + 3;
+			}
+			if (stuck)
+			{
+				Rectangle pill = new Rectangle(x, top + (d - fm.getHeight() - 1) / 2, textWidth, fm.getHeight() + 1);
+				g.setColor(Theme.alpha(Theme.INK_DEEP, 190));
+				g.fillRoundRect(pill.x, pill.y, pill.width, pill.height, 6, 6);
+				g.setStroke(new BasicStroke(1f));
+				g.setColor(Theme.alpha(Theme.TEAL, 200));
+				g.drawRoundRect(pill.x, pill.y, pill.width, pill.height, 6, 6);
+				Ui.shadowed(g, label, pill.x + 4, pill.y + fm.getAscent(), Theme.TEAL);
+			}
 		}
 		return null;
 	}

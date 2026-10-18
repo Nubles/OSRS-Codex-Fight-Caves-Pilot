@@ -3,6 +3,7 @@ package com.codex.fightcaves.ui;
 import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerPacer;
+import com.codex.fightcaves.core.Protect;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,52 @@ public final class View
 		}
 	}
 
+	/** The protection prayer the fight calls for. */
+	public static final class Call
+	{
+		final Protect prayer;
+		final Protect also;
+		final boolean up;
+		final List<com.codex.fightcaves.core.Monster> answered;
+
+		/**
+		 * @param also a second style hitting you that the prayer cannot block, or null
+		 * @param up whether you have the prayer on
+		 */
+		public Call(Protect prayer, Protect also, boolean up, List<com.codex.fightcaves.core.Monster> answered)
+		{
+			this.prayer = prayer;
+			this.also = also;
+			this.up = up;
+			this.answered = answered == null ? Collections.emptyList() : answered;
+		}
+
+		public Protect getPrayer()
+		{
+			return prayer;
+		}
+
+		public boolean isUp()
+		{
+			return up;
+		}
+	}
+
+	/** One creature's place in the kill order. */
+	public static final class Kill
+	{
+		final com.codex.fightcaves.core.Monster monster;
+		final String reason;
+		final boolean reachable;
+
+		public Kill(com.codex.fightcaves.core.Monster monster, String reason, boolean reachable)
+		{
+			this.monster = monster;
+			this.reason = reason;
+			this.reachable = reachable;
+		}
+	}
+
 	final State state;
 	final int wave;
 	final int rotation;
@@ -79,6 +126,8 @@ public final class View
 	final Map<String, List<String>> corrections;
 	/** The wave on now as it was seen spawning, for before the rotation is known. */
 	List<Placement> observed = Collections.emptyList();
+	Call call;
+	List<Kill> kills = Collections.emptyList();
 
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		Stand stand, double[] you, PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
@@ -114,6 +163,19 @@ public final class View
 	{
 		this.observed = observed == null ? Collections.emptyList() : observed;
 		return this;
+	}
+
+	/** Adds the prayer the fight calls for and the kill order. */
+	public View withFight(Call call, List<Kill> kills)
+	{
+		this.call = call;
+		this.kills = kills == null ? Collections.emptyList() : kills;
+		return this;
+	}
+
+	public Call getCall()
+	{
+		return call;
 	}
 
 	public State getState()

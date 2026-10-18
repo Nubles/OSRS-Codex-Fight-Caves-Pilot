@@ -3,14 +3,18 @@ package com.codex.fightcaves;
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.Chase;
 import com.codex.fightcaves.core.Grid;
+import com.codex.fightcaves.core.KillOrder;
 import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Monster;
 import com.codex.fightcaves.core.Placement;
+import com.codex.fightcaves.core.PrayerCall;
 import com.codex.fightcaves.core.PrayerPacer;
+import com.codex.fightcaves.core.Protect;
 import com.codex.fightcaves.core.RotationTracker;
 import com.codex.fightcaves.core.Spawn;
 import com.codex.fightcaves.core.StandPlanner;
 import com.codex.fightcaves.core.Waves;
+import com.codex.fightcaves.core.WeaponRange;
 import com.codex.fightcaves.overlay.CaveOverlay;
 import com.codex.fightcaves.overlay.Marks;
 import com.codex.fightcaves.overlay.PilotPlaque;
@@ -22,7 +26,6 @@ import com.codex.fightcaves.ui.View;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
@@ -37,6 +40,7 @@ import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.CollisionData;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
@@ -54,6 +58,7 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -159,6 +164,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private final List<Placement> observedNow = new ArrayList<>();
 	private int observedWave;
 
+	/** The last health seen on each creature's bar, kept once the bar fades. */
+	private final Map<NPC, Double> health = new HashMap<>();
+	/** Weapon item id to how far it attacks from. */
+	private final Map<Integer, Integer> rangeCache = new HashMap<>();
+	private int weaponRange = WeaponRange.DEFAULT;
+	private PrayerCall call;
+	private List<KillOrder.Target> order = java.util.Collections.emptyList();
+
 	private StandPlanner.Spot liveSpot;
 	private StandPlanner.Spot nextSpot;
 	private int nextSpotWave;
@@ -203,6 +216,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			if (client.getGameState() == GameState.LOGGED_IN)
 			{
 				countDoses(client.getItemContainer(InventoryID.INV));
+				readWeapon(client.getItemContainer(InventoryID.WORN));
 			}
 			publish(true);
 		});
@@ -284,6 +298,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	public void onNpcDespawned(NpcDespawned event)
 	{
 		waveNpcs.remove(event.getNpc());
+		health.remove(event.getNpc());
 	}
 
 	@Subscribe
@@ -301,6 +316,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (event.getContainerId() == InventoryID.INV)
 		{
 			countDoses(event.getItemContainer());
+		}
+		else if (event.getContainerId() == InventoryID.WORN)
+		{
+			readWeapon(event.getItemContainer());
 		}
 	}
 
@@ -459,6 +478,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		nextSpotWave = 0;
 		observedNow.clear();
 		observedWave = 0;
+		health.clear();
+		call = null;
+		order = java.util.Collections.emptyList();
 		caveOverlay.show(Marks.NONE);
 	}
 
@@ -472,55 +494,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		grid = new Grid(maps[wv.getPlane()].getFlags());
-		// The floor is everything you can walk to from where you stand.
-		int sx = me.getLocalLocation().getSceneX();
-		int sy = me.getLocalLocation().getSceneY();
-		int w = grid.getWidth();
-		int h = grid.getHeight();
-		boolean[][] seen = new boolean[w][h];
-		ArrayDeque<int[]> queue = new ArrayDeque<>();
-		queue.add(new int[]{sx, sy});
-		seen[sx][sy] = true;
-		int minX = sx;
-		int minY = sy;
-		int maxX = sx;
-		int maxY = sy;
-		while (!queue.isEmpty())
-		{
-			int[] t = queue.poll();
-			minX = Math.min(minX, t[0]);
-			minY = Math.min(minY, t[1]);
-			maxX = Math.max(maxX, t[0]);
-			maxY = Math.max(maxY, t[1]);
-			for (int dx = -1; dx <= 1; dx++)
-			{
-				for (int dy = -1; dy <= 1; dy++)
-				{
-					int nx = t[0] + dx;
-					int ny = t[1] + dy;
-					if (nx >= 0 && ny >= 0 && nx < w && ny < h && !seen[nx][ny] && grid.canStep(t[0], t[1], 1, dx, dy))
-					{
-						seen[nx][ny] = true;
-						queue.add(new int[]{nx, ny});
-					}
-				}
-			}
-		}
-		WorldPoint a = cave(minX, minY);
-		WorldPoint b = cave(maxX, maxY);
-		if (a == null || b == null)
-		{
-			return;
-		}
-		caveMap = new CaveMap(Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()),
-			Math.max(a.getX(), b.getX()), Math.max(a.getY(), b.getY()), book.anchors);
+		caveMap = new CaveMap(book.anchors);
 	}
 
 	/** A scene tile in the cave's own coordinates, which stay put from one copy of the cave to the next. */
 	private WorldPoint cave(int sceneX, int sceneY)
 	{
 		WorldView wv = client.getTopLevelWorldView();
-		LocalPoint lp = LocalPoint.fromScene(sceneX, sceneY, wv);
+		LocalPoint lp = wv == null ? null : LocalPoint.fromScene(sceneX, sceneY, wv);
 		return lp == null ? null : WorldPoint.fromLocalInstance(client, lp);
 	}
 
@@ -644,10 +625,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			{
 				continue;
 			}
-			double half = (s.monster.getSize() - 1) / 2.0;
-			double[] centre = {c.getX() + half, c.getY() + half};
-			centres.add(centre);
-			spawns.add(caveMap.classify(centre[0], centre[1]));
+			double[] corner = {c.getX(), c.getY()};
+			centres.add(corner);
+			spawns.add(caveMap.classify(corner[0], corner[1]));
 		}
 		if (spawns.size() != found.size())
 		{
@@ -733,7 +713,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 		if (caveMap != null)
 		{
-			caveMap = new CaveMap(caveMap.getMinX(), caveMap.getMinY(), caveMap.getMaxX(), caveMap.getMaxY(), book.anchors);
+			caveMap = new CaveMap(book.anchors);
 		}
 	}
 
@@ -839,18 +819,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			int[] sw = southWest(npc, m);
 			if (m != null && sw != null)
 			{
-				foes.add(new StandPlanner.Foe(m, sw[0], sw[1]));
+				foes.add(new StandPlanner.Foe(m, sw[0], sw[1], healthOf(npc), npc));
 			}
 		}
 
 		boolean jad = wave >= Waves.JAD;
 		if (!jad && config.standTile() && config.followFight() && !foes.isEmpty() && tick % PLAN_TICKS == 0)
 		{
-			StandPlanner.Spot best = StandPlanner.plan(grid, foes, px, py);
+			StandPlanner.Spot best = StandPlanner.plan(grid, foes, px, py, weaponRange);
 			if (best != null && liveSpot != null)
 			{
 				int steps = Math.max(Math.abs(liveSpot.getX() - px), Math.abs(liveSpot.getY() - py));
-				StandPlanner.Spot kept = StandPlanner.score(grid, foes, liveSpot.getX(), liveSpot.getY(), steps);
+				StandPlanner.Spot kept = StandPlanner.score(grid, foes, liveSpot.getX(), liveSpot.getY(), steps, weaponRange);
 				liveSpot = kept.getCost() <= best.getCost() + MOVE_MARGIN ? kept : best;
 			}
 			else
@@ -862,6 +842,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			liveSpot = null;
 		}
+		// Jad is yours to read: no prayer call and no kill order on his wave.
+		call = !jad && config.prayerCall() ? PrayerCall.of(grid, foes, px, py) : null;
+		order = !jad && config.killOrder() && foes.size() > 1
+			? KillOrder.rank(grid, foes, px, py, weaponRange, activeProtect()) : java.util.Collections.emptyList();
 
 		// As the wave on now draws to a close, plan for the one about to spawn.
 		boolean closing = rotation > 0 && wave + 1 < Waves.JAD && alive.size() <= 1 && pendingWave == 0 && caveMap != null;
@@ -871,7 +855,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			List<StandPlanner.Foe> next = new ArrayList<>();
 			for (Placement p : book.placements(rotation, wave + 1))
 			{
-				int[] t = caveMap.tile(p.getSpawn(), p.getMonster());
+				int[] t = caveMap.tile(p.getSpawn());
 				int[] s = scene(t[0], t[1]);
 				if (s != null)
 				{
@@ -881,7 +865,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			}
 			if (config.standTile() && !next.isEmpty() && (nextSpot == null || nextSpotWave != wave + 1 || tick % (PLAN_TICKS * 2) == 0))
 			{
-				nextSpot = StandPlanner.plan(grid, next, px, py);
+				nextSpot = StandPlanner.plan(grid, next, px, py, weaponRange);
 				nextSpotWave = wave + 1;
 			}
 		}
@@ -911,7 +895,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			stand = new Marks.Stand(spot.getX(), spot.getY(), spot == nextSpot, spot.safeFromRange());
 		}
-		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck));
+		Map<NPC, Integer> ranks = new HashMap<>();
+		for (int i = 0; i < order.size(); i++)
+		{
+			KillOrder.Target t = order.get(i);
+			if (t.isReachable() && t.getFoe().getTag() instanceof NPC)
+			{
+				ranks.put((NPC) t.getFoe().getTag(), i + 1);
+			}
+		}
+		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck, ranks));
 	}
 
 	/** The spot to show: the next wave's once the wave on now is all but done, otherwise the live one. */
@@ -922,6 +915,49 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return nextSpot;
 		}
 		return liveSpot != null ? liveSpot : nextSpot;
+	}
+
+	/** The share of a creature's hitpoints left, from its health bar or the last one it showed. */
+	private double healthOf(NPC npc)
+	{
+		int ratio = npc.getHealthRatio();
+		int scale = npc.getHealthScale();
+		if (ratio >= 0 && scale > 0)
+		{
+			double h = ratio / (double) scale;
+			health.put(npc, h);
+			return h;
+		}
+		return health.getOrDefault(npc, 1.0);
+	}
+
+	/** The protection prayer you have up, or null. */
+	private Protect activeProtect()
+	{
+		if (client.getVarbitValue(VarbitID.PRAYER_PROTECTFROMMAGIC) == 1)
+		{
+			return Protect.MAGIC;
+		}
+		if (client.getVarbitValue(VarbitID.PRAYER_PROTECTFROMMISSILES) == 1)
+		{
+			return Protect.MISSILES;
+		}
+		if (client.getVarbitValue(VarbitID.PRAYER_PROTECTFROMMELEE) == 1)
+		{
+			return Protect.MELEE;
+		}
+		return null;
+	}
+
+	private void readWeapon(ItemContainer worn)
+	{
+		Item weapon = worn == null ? null : worn.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+		if (weapon == null || weapon.getId() <= 0)
+		{
+			weaponRange = 1;
+			return;
+		}
+		weaponRange = rangeCache.computeIfAbsent(weapon.getId(), id -> WeaponRange.of(itemManager.getItemComposition(id).getName()));
 	}
 
 	private List<NPC> aliveFoes()
@@ -1088,7 +1124,23 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		List<Placement> observed = observedWave == wave ? observed() : java.util.Collections.emptyList();
 		return new View(View.State.IN_CAVE, wave, rotation, tracker.candidates(), tracker.decidingWave(wave + 1), tracker.clean(),
 			aliveFoes().size(), stand, you, pace, prayer, level, pacer.learned(), 0, a == null ? 0 : a.ticks, versus, copy(book))
-			.withObserved(observed);
+			.withObserved(observed).withFight(callView(), killsView());
+	}
+
+	private View.Call callView()
+	{
+		PrayerCall c = call;
+		return c == null ? null : new View.Call(c.getPrayer(), c.getAlso(), c.getPrayer() == activeProtect(), c.getAnswered());
+	}
+
+	private List<View.Kill> killsView()
+	{
+		List<View.Kill> list = new ArrayList<>();
+		for (KillOrder.Target t : order)
+		{
+			list.add(new View.Kill(t.getFoe().getMonster(), t.getReason().getText(), t.isReachable()));
+		}
+		return list;
 	}
 
 	private List<Placement> observed()
@@ -1109,8 +1161,13 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				}
 				return new View.Fate(m, m.isRanged() ? "stuck, cannot see you" : "stuck out of reach", true);
 			case AT_ONCE:
-				return new View.Fate(m, m.isRanged() ? "can hit you at once" : "already on you", false);
+				return new View.Fate(m, o.getStyle() == Monster.Style.MELEE && m.isRanged() ? "beside you, hits with melee"
+					: m.isRanged() ? "can hit you at once" : "already on you", false);
 			default:
+				if (o.getStyle() == Monster.Style.MELEE && m.isRanged())
+				{
+					return new View.Fate(m, "comes beside you, hits with melee", false);
+				}
 				return new View.Fate(m, (m.isRanged() ? "sees you in " : "reaches you in ") + c.getTicks() + (c.getTicks() == 1 ? " tick" : " ticks"), false);
 		}
 	}
@@ -1119,13 +1176,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private double[] fraction(int sceneX, int sceneY)
 	{
 		WorldPoint p = cave(sceneX, sceneY);
-		if (p == null || caveMap == null)
+		if (p == null)
 		{
 			return null;
 		}
-		double fx = (p.getX() - caveMap.getMinX()) / (double) Math.max(1, caveMap.getMaxX() - caveMap.getMinX());
-		double fy = (p.getY() - caveMap.getMinY()) / (double) Math.max(1, caveMap.getMaxY() - caveMap.getMinY());
-		return new double[]{Math.max(0, Math.min(1, fx)), Math.max(0, Math.min(1, fy))};
+		return new double[]{CaveMap.fx(p.getX() - CaveMap.BASE_X), CaveMap.fy(p.getY() - CaveMap.BASE_Y)};
 	}
 
 	/** A copy of the logbook for the Swing thread, so it never reads one being written. */
@@ -1142,6 +1197,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			.append(tracker.candidates()).append(book == null ? "" : book.attempts + "/" + book.capes)
 			.append(book == null || book.active == null ? "" : book.active.wave + "/" + book.active.dosesUsed)
 			.append(prayerDoses).append('/').append(restoreDoses).append('/').append(client.getBoostedSkillLevel(Skill.PRAYER));
+		PrayerCall c = call;
+		if (c != null)
+		{
+			k.append('p').append(c.getPrayer()).append(c.getAlso()).append(c.getPrayer() == activeProtect());
+		}
+		for (KillOrder.Target t : order)
+		{
+			k.append('k').append(t.getFoe().getMonster().ordinal()).append(t.getReason().ordinal());
+		}
 		StandPlanner.Spot spot = shownSpot();
 		if (spot != null)
 		{
@@ -1159,13 +1223,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		if (!config.plaque() || v.getState() != View.State.IN_CAVE || v.getWave() == 0)
 		{
-			plaque.show(null, null, null, null);
+			plaque.show(null, null, null, null, null, null);
 			return;
 		}
 		String note = v.getRotation() > 0 ? "Rotation " + v.getRotation() : "Reading rotation";
 		PrayerPacer.Pace pace = v.getPace();
 		String prayer = pace == null ? null : Format.doses(pace.getDoses()) + " (" + Format.spare(pace.getSpare()) + ")";
-		plaque.show("Wave " + v.getWave(), note, prayer, pace == null ? Theme.TEXT_MUTED : Theme.of(pace.getState()));
+		View.Call c = v.getCall();
+		String call = c == null ? null : (c.isUp() ? "" : "Pray ") + c.getPrayer().getShortName() + (c.isUp() ? " up" : "");
+		plaque.show("Wave " + v.getWave(), note, prayer, pace == null ? Theme.TEXT_MUTED : Theme.of(pace.getState()),
+			call, c == null ? null : Theme.of(c.getPrayer()));
 	}
 
 	/** Drops sightings too old to belong to any wave, so the list cannot grow. */

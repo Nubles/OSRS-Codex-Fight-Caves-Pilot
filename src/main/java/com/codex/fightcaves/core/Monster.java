@@ -6,12 +6,12 @@ package com.codex.fightcaves.core;
  */
 public enum Monster
 {
-	TZ_KIH("Tz-Kih", "Bat", 22, 1, 10, Style.MELEE, 1, 1),
-	TZ_KEK("Tz-Kek", "Blob", 45, 2, 20, Style.MELEE, 1, 2),
-	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 10, 4),
-	YT_MEJKOT("Yt-MejKot", "Melee", 180, 4, 80, Style.MELEE, 1, 5),
-	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 10, 9),
-	TZTOK_JAD("TzTok-Jad", "Jad", 702, 5, 250, Style.MIXED, 10, 12);
+	TZ_KIH("Tz-Kih", "Bat", 22, 1, 10, Style.MELEE, 1, 1, 4),
+	TZ_KEK("Tz-Kek", "Blob", 45, 2, 20, Style.MELEE, 1, 2, 7),
+	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 10, 4, 13),
+	YT_MEJKOT("Yt-MejKot", "Melee", 180, 4, 80, Style.MELEE, 1, 5, 25),
+	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 10, 9, 54),
+	TZTOK_JAD("TzTok-Jad", "Jad", 702, 5, 250, Style.MIXED, 10, 12, 97);
 
 	/** How a creature fights. */
 	public enum Style
@@ -30,9 +30,11 @@ public enum Monster
 	private final Style style;
 	private final int range;
 	private final int threat;
+	private final int maxHit;
 
-	Monster(String name, String nickname, int level, int size, int hitpoints, Style style, int range, int threat)
+	Monster(String name, String nickname, int level, int size, int hitpoints, Style style, int range, int threat, int maxHit)
 	{
+		this.maxHit = maxHit;
 		this.name = name;
 		this.nickname = nickname;
 		this.level = level;
@@ -85,6 +87,21 @@ public enum Monster
 	public int getThreat()
 	{
 		return threat;
+	}
+
+	/** Its biggest hit, with any of its attacks. */
+	public int getMaxHit()
+	{
+		return maxHit;
+	}
+
+	/**
+	 * How it attacks from a south-west tile: rangers and magers switch to melee once they are
+	 * beside you, which is why standing next to one costs you the prayer you had up for it.
+	 */
+	public Style styleAt(int x, int y, int tx, int ty)
+	{
+		return isRanged() && Grid.meleeReach(x, y, size, tx, ty) ? Style.MELEE : style;
 	}
 
 	/** Attacks from a distance, so standing out of its sight is what keeps it off you. */

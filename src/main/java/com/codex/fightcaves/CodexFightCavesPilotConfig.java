@@ -55,10 +55,32 @@ public interface CodexFightCavesPilotConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "killOrder",
+		name = "Kill order",
+		description = "Number the creatures in the order to kill them: whatever hits you hardest for its health first, then anything stuck where you can hit it. Not shown on the Jad wave",
+		position = 4
+	)
+	default boolean killOrder()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "prayerCall",
+		name = "Prayer to use",
+		description = "Name the protection prayer that blocks the most of what can hit you where you stand. Not shown on the Jad wave",
+		position = 5
+	)
+	default boolean prayerCall()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "plaque",
 		name = "Pilot plaque",
 		description = "Show a small plaque in the game view with the wave, the rotation and how your prayer is holding up",
-		position = 4
+		position = 6
 	)
 	default boolean plaque()
 	{
@@ -69,7 +91,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "jadDoses",
 		name = "Doses kept for Jad",
 		description = "Prayer doses to hold back for the Jad wave when pacing the rest of the run",
-		position = 5
+		position = 7
 	)
 	@Range(min = 0, max = 28)
 	default int jadDoses()
@@ -81,7 +103,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "chat",
 		name = "Chat notes",
 		description = "Say in the chat box when the rotation is known and when your prayer falls behind pace",
-		position = 6
+		position = 8
 	)
 	default boolean chat()
 	{

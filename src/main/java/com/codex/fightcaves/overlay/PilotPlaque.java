@@ -13,8 +13,9 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * A slim gilt plaque in the game view: the wave and rotation in the gold of the crest, and how
- * prayer is holding up in its pace colour. It draws what the plugin hands it.
+ * A slim gilt plaque in the game view: the wave and rotation in the gold of the crest, how
+ * prayer is holding up in its pace colour, and the protection prayer the fight calls for. It
+ * draws what the plugin hands it.
  */
 public class PilotPlaque extends Overlay
 {
@@ -28,13 +29,17 @@ public class PilotPlaque extends Overlay
 		final String note;
 		final String prayer;
 		final Color prayerColor;
+		final String call;
+		final Color callColor;
 
-		Shown(String figure, String note, String prayer, Color prayerColor)
+		Shown(String figure, String note, String prayer, Color prayerColor, String call, Color callColor)
 		{
 			this.figure = figure;
 			this.note = note;
 			this.prayer = prayer;
 			this.prayerColor = prayerColor;
+			this.call = call;
+			this.callColor = callColor;
 		}
 	}
 
@@ -47,10 +52,11 @@ public class PilotPlaque extends Overlay
 	 * @param figure the big text, such as "Wave 24", or null to hide the plaque
 	 * @param note quieter text beside it, such as the rotation
 	 * @param prayer the prayer pace, or null
+	 * @param call the protection prayer the fight calls for, such as "Pray Magic", or null
 	 */
-	public void show(String figure, String note, String prayer, Color prayerColor)
+	public void show(String figure, String note, String prayer, Color prayerColor, String call, Color callColor)
 	{
-		shown = figure == null ? null : new Shown(figure, note, prayer, prayerColor);
+		shown = figure == null ? null : new Shown(figure, note, prayer, prayerColor, call, callColor);
 	}
 
 	@Override
@@ -71,6 +77,10 @@ public class PilotPlaque extends Overlay
 		if (s.prayer != null)
 		{
 			width += 10 + small.stringWidth(s.prayer);
+		}
+		if (s.call != null)
+		{
+			width += 10 + small.stringWidth(s.call) + 8;
 		}
 		int height = Math.max(icon, bold.getHeight()) + PAD;
 
@@ -93,6 +103,20 @@ public class PilotPlaque extends Overlay
 		{
 			x += small.stringWidth(s.note) + 10;
 			Ui.shadowed(g, s.prayer, x, base, s.prayerColor);
+			x += small.stringWidth(s.prayer);
+		}
+		if (s.call != null)
+		{
+			// The prayer to use sits in its own lozenge, in the colour of what it answers.
+			x += 10;
+			int w = small.stringWidth(s.call) + 8;
+			int h = small.getHeight() + 2;
+			int top = (height - h) / 2;
+			g.setColor(Theme.alpha(s.callColor, 40));
+			g.fillRoundRect(x - 4, top, w, h, 8, 8);
+			g.setColor(Theme.alpha(s.callColor, 190));
+			g.drawRoundRect(x - 4, top, w, h, 8, 8);
+			Ui.shadowed(g, s.call, x, base, s.callColor);
 		}
 		return new Dimension(width, height);
 	}

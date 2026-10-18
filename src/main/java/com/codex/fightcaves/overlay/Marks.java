@@ -3,12 +3,13 @@ package com.codex.fightcaves.overlay;
 import com.codex.fightcaves.core.Monster;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import net.runelite.api.NPC;
 
 /** What the cave overlay draws this frame, handed over whole by the plugin. */
 public final class Marks
 {
-	public static final Marks NONE = new Marks(null, Collections.emptyList(), Collections.emptyList());
+	public static final Marks NONE = new Marks(null, Collections.emptyList(), Collections.emptyList(), Collections.emptyMap());
 
 	/** The tile to stand on, in scene coordinates. */
 	public static final class Stand
@@ -46,11 +47,14 @@ public final class Marks
 	final Stand stand;
 	final List<Ghost> ghosts;
 	final List<NPC> stuck;
+	/** Where each creature comes in the kill order, from 1. */
+	final Map<NPC, Integer> ranks;
 
-	public Marks(Stand stand, List<Ghost> ghosts, List<NPC> stuck)
+	public Marks(Stand stand, List<Ghost> ghosts, List<NPC> stuck, Map<NPC, Integer> ranks)
 	{
 		this.stand = stand;
 		this.ghosts = ghosts;
 		this.stuck = stuck;
+		this.ranks = ranks;
 	}
 }

@@ -3,7 +3,9 @@ package com.codex.fightcaves.core;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Finds where to stand. Every tile you could reach in a few seconds is tried: each creature's
@@ -16,8 +18,6 @@ public final class StandPlanner
 {
 	/** How far to look, in steps you would walk. */
 	static final int REACH = 14;
-	/** How far you can hit a stuck creature from, for a typical crossbow or staff. */
-	static final int YOUR_RANGE = 7;
 
 	private StandPlanner()
 	{
@@ -29,13 +29,36 @@ public final class StandPlanner
 		final Monster monster;
 		final int x;
 		final int y;
+		final double health;
+		final Object tag;
 
 		/** @param x the south-west tile of its body */
 		public Foe(Monster monster, int x, int y)
 		{
+			this(monster, x, y, 1, null);
+		}
+
+		/**
+		 * @param health the share of its hitpoints left, 0 to 1
+		 * @param tag whatever the caller wants back with it, such as the game's NPC
+		 */
+		public Foe(Monster monster, int x, int y, double health, Object tag)
+		{
 			this.monster = monster;
 			this.x = x;
 			this.y = y;
+			this.health = Math.max(0, Math.min(1, health));
+			this.tag = tag;
+		}
+
+		public double getHealth()
+		{
+			return health;
+		}
+
+		public Object getTag()
+		{
+			return tag;
 		}
 
 		public Monster getMonster()
@@ -60,12 +83,20 @@ public final class StandPlanner
 		private final Foe foe;
 		private final Chase chase;
 		private final boolean inReach;
+		private final Monster.Style style;
 
-		Outcome(Foe foe, Chase chase, boolean inReach)
+		Outcome(Foe foe, Chase chase, boolean inReach, Monster.Style style)
 		{
 			this.foe = foe;
 			this.chase = chase;
 			this.inReach = inReach;
+			this.style = style;
+		}
+
+		/** How it hits you once it gets there, or null when it never does. */
+		public Monster.Style getStyle()
+		{
+			return style;
 		}
 
 		/**
@@ -163,9 +194,10 @@ public final class StandPlanner
 
 	/**
 	 * @param px the tile you stand on now
+	 * @param range how far you attack from
 	 * @return the best tile, or null when there is nothing to plan for
 	 */
-	public static Spot plan(Grid grid, List<Foe> foes, int px, int py)
+	public static Spot plan(Grid grid, List<Foe> foes, int px, int py, int range)
 	{
 		if (foes.isEmpty() || !grid.walkable(px, py))
 		{
@@ -188,7 +220,7 @@ public final class StandPlanner
 			int s = steps[t[0]][t[1]];
 			if (!underAny(foes, t[0], t[1]))
 			{
-				Spot spot = score(grid, foes, t[0], t[1], s);
+				Spot spot = score(grid, foes, t[0], t[1], s, range);
 				if (best == null || spot.cost < best.cost - 1e-9)
 				{
 					best = spot;
@@ -217,33 +249,36 @@ public final class StandPlanner
 	}
 
 	/** Scores one tile; also used to say how the tile you are on now fares. */
-	public static Spot score(Grid grid, List<Foe> foes, int x, int y, int steps)
+	public static Spot score(Grid grid, List<Foe> foes, int x, int y, int steps, int range)
 	{
 		List<Outcome> outcomes = new ArrayList<>();
 		double cost = 0;
 		List<Integer> arrivals = new ArrayList<>();
+		Map<Monster.Style, Integer> styles = new EnumMap<>(Monster.Style.class);
 		int hidden = 0;
 		for (Foe f : foes)
 		{
 			Chase c = Chase.run(grid, f.monster, f.x, f.y, x, y);
 			int threat = f.monster.getThreat();
 			boolean inReach = false;
+			Monster.Style style = null;
 			switch (c.getEnd())
 			{
 				case AT_ONCE:
 					cost += threat * (f.monster.isRanged() ? 1.7 : 1.3);
 					arrivals.add(0);
+					style = f.monster.styleAt(c.getX(), c.getY(), x, y);
 					break;
 				case REACHES:
 					cost += threat * (1 + Math.max(0, 8 - c.getTicks()) * 0.06);
 					arrivals.add(c.getTicks());
+					style = f.monster.styleAt(c.getX(), c.getY(), x, y);
 					break;
 				default:
-					// A stuck melee creature you can still shoot is the best case of all. Anything
-					// else stuck still has to be dealt with later, so it is not free.
-					inReach = !f.monster.isRanged()
-						&& Grid.distance(c.getX(), c.getY(), f.monster.getSize(), x, y) <= YOUR_RANGE
-						&& grid.areaSees(c.getX(), c.getY(), f.monster.getSize(), x, y);
+					// A stuck creature you can still hit is the best case of all: the classic
+					// safespot. Anything else stuck still has to be dealt with later, so it is
+					// not free.
+					inReach = canReach(grid, c.getX(), c.getY(), f.monster.getSize(), x, y, range);
 					cost += threat * (inReach ? 0.05 : f.monster.isRanged() ? 0.12 : 0.3);
 					if (!inReach)
 					{
@@ -251,12 +286,34 @@ public final class StandPlanner
 					}
 					break;
 			}
-			outcomes.add(new Outcome(f, c, inReach));
+			if (style != null)
+			{
+				styles.merge(style, threat, Integer::sum);
+				// A Tz-Kek that reaches you dies beside you, and its two halves start on you at once.
+				if (f.monster == Monster.TZ_KEK)
+				{
+					cost += Monster.TZ_KIH.getThreat();
+				}
+			}
+			outcomes.add(new Outcome(f, c, inReach, style));
 		}
 		// Hiding from everything stalls the wave rather than winning it.
 		if (hidden == foes.size())
 		{
 			cost += 2;
+		}
+		// One prayer blocks one style. Every creature hitting you in another style hits in full,
+		// so a tile where a mager and a melee both reach you is far worse than either alone.
+		if (styles.size() > 1)
+		{
+			int total = 0;
+			int top = 0;
+			for (int t : styles.values())
+			{
+				total += t;
+				top = Math.max(top, t);
+			}
+			cost += (total - top) * 0.6;
 		}
 		// Creatures that arrive together hit together.
 		Collections.sort(arrivals);
@@ -271,6 +328,16 @@ public final class StandPlanner
 		cost += ((steps + 1) / 2) * 0.25;
 		outcomes.sort((a, b) -> Integer.compare(b.foe.monster.getThreat(), a.foe.monster.getThreat()));
 		return new Spot(x, y, cost, steps, Collections.unmodifiableList(outcomes));
+	}
+
+	/** Whether you could hit a creature of this size from a tile, with your weapon's range. */
+	public static boolean canReach(Grid grid, int fx, int fy, int size, int x, int y, int range)
+	{
+		if (range <= 1)
+		{
+			return Grid.meleeReach(fx, fy, size, x, y);
+		}
+		return Grid.distance(fx, fy, size, x, y) <= range && grid.areaSees(fx, fy, size, x, y);
 	}
 
 	private static boolean underAny(List<Foe> foes, int x, int y)
