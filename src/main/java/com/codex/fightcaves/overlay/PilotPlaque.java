@@ -1,0 +1,99 @@
+package com.codex.fightcaves.overlay;
+
+import com.codex.fightcaves.ui.Sigil;
+import com.codex.fightcaves.ui.Theme;
+import com.codex.fightcaves.ui.Ui;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.GradientPaint;
+import java.awt.Graphics2D;
+import java.awt.geom.RoundRectangle2D;
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayPosition;
+
+/**
+ * A slim gilt plaque in the game view: the wave and rotation in the gold of the crest, and how
+ * prayer is holding up in its pace colour. It draws what the plugin hands it.
+ */
+public class PilotPlaque extends Overlay
+{
+	private static final int PAD = 7;
+
+	private volatile Shown shown;
+
+	private static final class Shown
+	{
+		final String figure;
+		final String note;
+		final String prayer;
+		final Color prayerColor;
+
+		Shown(String figure, String note, String prayer, Color prayerColor)
+		{
+			this.figure = figure;
+			this.note = note;
+			this.prayer = prayer;
+			this.prayerColor = prayerColor;
+		}
+	}
+
+	public PilotPlaque()
+	{
+		setPosition(OverlayPosition.TOP_LEFT);
+	}
+
+	/**
+	 * @param figure the big text, such as "Wave 24", or null to hide the plaque
+	 * @param note quieter text beside it, such as the rotation
+	 * @param prayer the prayer pace, or null
+	 */
+	public void show(String figure, String note, String prayer, Color prayerColor)
+	{
+		shown = figure == null ? null : new Shown(figure, note, prayer, prayerColor);
+	}
+
+	@Override
+	public Dimension render(Graphics2D g)
+	{
+		Shown s = shown;
+		if (s == null)
+		{
+			return null;
+		}
+		Theme.smooth(g);
+		g.setFont(Theme.title());
+		FontMetrics bold = g.getFontMetrics();
+		g.setFont(Theme.small());
+		FontMetrics small = g.getFontMetrics();
+		int icon = 16;
+		int width = PAD + icon + 6 + bold.stringWidth(s.figure) + 8 + small.stringWidth(s.note) + PAD;
+		if (s.prayer != null)
+		{
+			width += 10 + small.stringWidth(s.prayer);
+		}
+		int height = Math.max(icon, bold.getHeight()) + PAD;
+
+		RoundRectangle2D shape = new RoundRectangle2D.Float(0.5f, 0.5f, width - 1, height - 1, 10, 10);
+		g.setPaint(new GradientPaint(0, 0, Theme.alpha(Theme.CARD_TOP, 230), 0, height, Theme.alpha(Theme.INK_DEEP, 230)));
+		g.fill(shape);
+		g.setColor(Theme.alpha(Theme.GOLD, 150));
+		g.draw(shape);
+
+		int x = PAD;
+		Sigil.paint(g, x, (height - icon) / 2f, icon);
+		x += icon + 6;
+		int base = (height + bold.getAscent()) / 2 - 2;
+		g.setFont(Theme.title());
+		Ui.shadowed(g, s.figure, x, base, Theme.GOLD_BRIGHT);
+		x += bold.stringWidth(s.figure) + 8;
+		g.setFont(Theme.small());
+		Ui.shadowed(g, s.note, x, base, Theme.TEXT_MUTED);
+		if (s.prayer != null)
+		{
+			x += small.stringWidth(s.note) + 10;
+			Ui.shadowed(g, s.prayer, x, base, s.prayerColor);
+		}
+		return new Dimension(width, height);
+	}
+}

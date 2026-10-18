@@ -1,0 +1,1183 @@
+package com.codex.fightcaves;
+
+import com.codex.fightcaves.core.CaveMap;
+import com.codex.fightcaves.core.Chase;
+import com.codex.fightcaves.core.Grid;
+import com.codex.fightcaves.core.Logbook;
+import com.codex.fightcaves.core.Monster;
+import com.codex.fightcaves.core.Placement;
+import com.codex.fightcaves.core.PrayerPacer;
+import com.codex.fightcaves.core.RotationTracker;
+import com.codex.fightcaves.core.Spawn;
+import com.codex.fightcaves.core.StandPlanner;
+import com.codex.fightcaves.core.Waves;
+import com.codex.fightcaves.overlay.CaveOverlay;
+import com.codex.fightcaves.overlay.Marks;
+import com.codex.fightcaves.overlay.PilotPlaque;
+import com.codex.fightcaves.ui.Format;
+import com.codex.fightcaves.ui.PilotPanel;
+import com.codex.fightcaves.ui.Sigil;
+import com.codex.fightcaves.ui.Theme;
+import com.codex.fightcaves.ui.View;
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
+import com.google.inject.Provides;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.inject.Inject;
+import javax.swing.SwingUtilities;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.GameState;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
+import net.runelite.api.NPC;
+import net.runelite.api.Player;
+import net.runelite.api.Skill;
+import net.runelite.api.WorldView;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.NpcSpawned;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatColorType;
+import net.runelite.client.chat.ChatMessageBuilder;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.RuneScapeProfileChanged;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@PluginDescriptor(
+	name = "Codex Fight Caves Pilot",
+	description = "Reads your Fight Cave rotation from the first spawns, marks where to stand for each wave and paces your prayer potions against the waves left",
+	tags = {"fight caves", "fight cave", "tzhaar", "jad", "fire cape", "rotation", "waves", "safespot", "prayer", "codex"}
+)
+public class CodexFightCavesPilotPlugin extends Plugin
+{
+	private static final Logger log = LoggerFactory.getLogger(CodexFightCavesPilotPlugin.class);
+	static final int FIGHT_CAVE_REGION = 9551;
+	private static final String LOGBOOK_KEY = "logbook";
+	private static final Pattern WAVE = Pattern.compile("Wave: (\\d+)");
+	private static final Pattern KILL_COUNT = Pattern.compile("Your TzTok-Jad kill count is");
+	private static final Pattern TAGS = Pattern.compile("<[^>]*>");
+	/** Ticks to wait after the wave message for all of the wave's spawns to arrive. */
+	private static final int SPAWN_GRACE = 3;
+	/** Ticks between saves while something has changed. */
+	private static final int SAVE_TICKS = 100;
+	/** Ticks between re-working where to stand while a wave is on. */
+	private static final int PLAN_TICKS = 2;
+	/** How much safer a new tile has to be before the gilt tile moves, so it does not flicker. */
+	private static final double MOVE_MARGIN = 0.8;
+
+	@Inject
+	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private ConfigManager configManager;
+
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private ChatMessageManager chatMessageManager;
+
+	@Inject
+	private Gson gson;
+
+	@Inject
+	private CodexFightCavesPilotConfig config;
+
+	@Inject
+	private CaveOverlay caveOverlay;
+
+	private final PilotPlaque plaque = new PilotPlaque();
+	private final RotationTracker tracker = new RotationTracker();
+	/** Creatures that appeared recently, waiting to be matched to a wave. */
+	private final List<Sighting> sightings = new ArrayList<>();
+	/** The creatures of the wave on now, for re-working where to stand. */
+	private final List<NPC> waveNpcs = new ArrayList<>();
+	/** Item id to {kind, doses}: kind 1 is a prayer potion, 2 a super restore or sanfew, 0 neither. */
+	private final Map<Integer, int[]> doseCache = new HashMap<>();
+
+	private PilotPanel panel;
+	private NavigationButton navButton;
+
+	private String profile;
+	private Logbook book;
+	private PrayerPacer pacer = new PrayerPacer();
+	private boolean unsaved;
+
+	private boolean inCave;
+	private Grid grid;
+	private CaveMap caveMap;
+	private int tick;
+	private int pendingWave;
+	private int pendingTick;
+	private boolean died;
+	private int lastPrayer = -1;
+	private int waveSpent;
+	private int prayerDoses;
+	private int restoreDoses;
+	private int lastDoses = -1;
+	private boolean warnedShort;
+
+	/** The last wave read, as it spawned, for the panel to show before the rotation is known. */
+	private final List<Placement> observedNow = new ArrayList<>();
+	private int observedWave;
+
+	private StandPlanner.Spot liveSpot;
+	private StandPlanner.Spot nextSpot;
+	private int nextSpotWave;
+	private String lastViewKey;
+
+	private static final class Sighting
+	{
+		final NPC npc;
+		final Monster monster;
+		final int tick;
+
+		Sighting(NPC npc, Monster monster, int tick)
+		{
+			this.npc = npc;
+			this.monster = monster;
+			this.tick = tick;
+		}
+	}
+
+	@Provides
+	CodexFightCavesPilotConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(CodexFightCavesPilotConfig.class);
+	}
+
+	@Override
+	protected void startUp()
+	{
+		panel = new PilotPanel();
+		navButton = NavigationButton.builder()
+			.tooltip("Codex Fight Caves Pilot")
+			.icon(Sigil.icon(16))
+			.priority(8)
+			.panel(panel)
+			.build();
+		clientToolbar.addNavigation(navButton);
+		overlayManager.add(caveOverlay);
+		overlayManager.add(plaque);
+		clientThread.invokeLater(() ->
+		{
+			loadProfile();
+			if (client.getGameState() == GameState.LOGGED_IN)
+			{
+				countDoses(client.getItemContainer(InventoryID.INV));
+			}
+			publish(true);
+		});
+	}
+
+	@Override
+	protected void shutDown()
+	{
+		overlayManager.remove(caveOverlay);
+		overlayManager.remove(plaque);
+		clientToolbar.removeNavigation(navButton);
+		clientThread.invokeLater(() ->
+		{
+			save();
+			book = null;
+			profile = null;
+			resetCave();
+			inCave = false;
+		});
+		panel = null;
+	}
+
+	// Events.
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		switch (event.getGameState())
+		{
+			case LOADING:
+				// A fresh copy of the cave means fresh collision data.
+				grid = null;
+				break;
+			case LOGIN_SCREEN:
+			case HOPPING:
+				save();
+				resetCave();
+				inCave = false;
+				publish(true);
+				break;
+			default:
+				break;
+		}
+	}
+
+	@Subscribe
+	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
+	{
+		save();
+		loadProfile();
+		publish(true);
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()))
+		{
+			clientThread.invokeLater(() -> publish(true));
+		}
+	}
+
+	@Subscribe
+	public void onNpcSpawned(NpcSpawned event)
+	{
+		if (!inCave)
+		{
+			return;
+		}
+		NPC npc = event.getNpc();
+		Monster m = Monster.of(npc.getName(), npc.getCombatLevel());
+		if (m != null)
+		{
+			sightings.add(new Sighting(npc, m, tick));
+		}
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned event)
+	{
+		waveNpcs.remove(event.getNpc());
+	}
+
+	@Subscribe
+	public void onActorDeath(ActorDeath event)
+	{
+		if (inCave && event.getActor() == client.getLocalPlayer())
+		{
+			died = true;
+		}
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (event.getContainerId() == InventoryID.INV)
+		{
+			countDoses(event.getItemContainer());
+		}
+	}
+
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (!inCave || (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM))
+		{
+			return;
+		}
+		String text = TAGS.matcher(event.getMessage()).replaceAll("");
+		Matcher wave = WAVE.matcher(text);
+		if (wave.find())
+		{
+			onWave(Integer.parseInt(wave.group(1)));
+			return;
+		}
+		if (KILL_COUNT.matcher(text).find() && book != null && book.active != null)
+		{
+			Logbook.Active a = book.active;
+			a.splits.add(a.ticks - a.waveStartTick);
+			Logbook.Run run = book.finish(Logbook.Result.CAPE);
+			unsaved = true;
+			save();
+			if (config.chat() && run != null)
+			{
+				chat("fire cape in " + Format.ticks(run.ticks)
+					+ (run.rotation > 0 ? " on rotation " + run.rotation : "")
+					+ (run.dosesUsed > 0 ? ", " + Format.doses(run.dosesUsed) + " drunk." : "."));
+			}
+			resetCave();
+			publish(true);
+		}
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		if (client.getGameState() != GameState.LOGGED_IN || book == null)
+		{
+			return;
+		}
+		tick++;
+		boolean nowInCave = isInCave();
+		if (nowInCave && !inCave)
+		{
+			enterCave();
+		}
+		else if (!nowInCave && inCave)
+		{
+			leaveCave();
+		}
+		else if (!nowInCave && book.active != null)
+		{
+			// Logged in outside the cave with a run still open: it ended while we were away.
+			book.finish(Logbook.Result.LEFT);
+			unsaved = true;
+		}
+		inCave = nowInCave;
+
+		if (inCave)
+		{
+			if (grid == null)
+			{
+				buildGrid();
+			}
+			if (book.active != null)
+			{
+				book.active.ticks++;
+			}
+			trackPrayer();
+			if (pendingWave > 0 && readyToRead())
+			{
+				readWave();
+			}
+			else if (pendingWave == 0)
+			{
+				pruneSightings();
+			}
+			plan();
+		}
+		if (tick % SAVE_TICKS == 0)
+		{
+			save();
+		}
+		publish(false);
+	}
+
+	// The cave.
+
+	private boolean isInCave()
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv == null || wv.getMapRegions() == null)
+		{
+			return false;
+		}
+		for (int region : wv.getMapRegions())
+		{
+			if (region == FIGHT_CAVE_REGION)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void enterCave()
+	{
+		resetCave();
+		tracker.reset();
+		Logbook.Active a = book.active;
+		if (a != null)
+		{
+			// Picking a run back up after logging out: replay what it had seen.
+			for (Map.Entry<Integer, List<String>> e : a.seen.entrySet())
+			{
+				List<Spawn> spawns = new ArrayList<>();
+				for (String code : e.getValue())
+				{
+					spawns.add(Spawn.ofCode(code));
+				}
+				tracker.observe(e.getKey(), spawns);
+			}
+			if (tracker.rotation() == 0 && a.rotation > 0)
+			{
+				tracker.assume(a.rotation);
+			}
+		}
+	}
+
+	private void leaveCave()
+	{
+		if (book.active != null)
+		{
+			book.finish(died ? Logbook.Result.DIED : Logbook.Result.LEFT);
+			unsaved = true;
+			save();
+		}
+		resetCave();
+	}
+
+	private void resetCave()
+	{
+		grid = null;
+		caveMap = null;
+		sightings.clear();
+		waveNpcs.clear();
+		pendingWave = 0;
+		died = false;
+		lastPrayer = -1;
+		waveSpent = 0;
+		warnedShort = false;
+		liveSpot = null;
+		nextSpot = null;
+		nextSpotWave = 0;
+		observedNow.clear();
+		observedWave = 0;
+		caveOverlay.show(Marks.NONE);
+	}
+
+	private void buildGrid()
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		Player me = client.getLocalPlayer();
+		CollisionData[] maps = wv == null ? null : wv.getCollisionMaps();
+		if (maps == null || me == null || me.getLocalLocation() == null)
+		{
+			return;
+		}
+		grid = new Grid(maps[wv.getPlane()].getFlags());
+		// The floor is everything you can walk to from where you stand.
+		int sx = me.getLocalLocation().getSceneX();
+		int sy = me.getLocalLocation().getSceneY();
+		int w = grid.getWidth();
+		int h = grid.getHeight();
+		boolean[][] seen = new boolean[w][h];
+		ArrayDeque<int[]> queue = new ArrayDeque<>();
+		queue.add(new int[]{sx, sy});
+		seen[sx][sy] = true;
+		int minX = sx;
+		int minY = sy;
+		int maxX = sx;
+		int maxY = sy;
+		while (!queue.isEmpty())
+		{
+			int[] t = queue.poll();
+			minX = Math.min(minX, t[0]);
+			minY = Math.min(minY, t[1]);
+			maxX = Math.max(maxX, t[0]);
+			maxY = Math.max(maxY, t[1]);
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				for (int dy = -1; dy <= 1; dy++)
+				{
+					int nx = t[0] + dx;
+					int ny = t[1] + dy;
+					if (nx >= 0 && ny >= 0 && nx < w && ny < h && !seen[nx][ny] && grid.canStep(t[0], t[1], 1, dx, dy))
+					{
+						seen[nx][ny] = true;
+						queue.add(new int[]{nx, ny});
+					}
+				}
+			}
+		}
+		WorldPoint a = cave(minX, minY);
+		WorldPoint b = cave(maxX, maxY);
+		if (a == null || b == null)
+		{
+			return;
+		}
+		caveMap = new CaveMap(Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()),
+			Math.max(a.getX(), b.getX()), Math.max(a.getY(), b.getY()), book.anchors);
+	}
+
+	/** A scene tile in the cave's own coordinates, which stay put from one copy of the cave to the next. */
+	private WorldPoint cave(int sceneX, int sceneY)
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		LocalPoint lp = LocalPoint.fromScene(sceneX, sceneY, wv);
+		return lp == null ? null : WorldPoint.fromLocalInstance(client, lp);
+	}
+
+	/** A tile in the cave's own coordinates on this copy of the cave, as a scene tile, or null. */
+	private int[] scene(int caveX, int caveY)
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		Collection<WorldPoint> points = WorldPoint.toLocalInstance(wv, new WorldPoint(caveX, caveY, wv.getPlane()));
+		for (WorldPoint p : points)
+		{
+			LocalPoint lp = LocalPoint.fromWorld(wv, p);
+			if (lp != null)
+			{
+				return new int[]{lp.getSceneX(), lp.getSceneY()};
+			}
+		}
+		return null;
+	}
+
+	/** The south-west scene tile of a creature's body. */
+	private static int[] southWest(NPC npc, Monster m)
+	{
+		LocalPoint lp = npc.getLocalLocation();
+		if (lp == null)
+		{
+			return null;
+		}
+		int size = m == null ? 1 : m.getSize();
+		return new int[]{(lp.getX() - size * 64) / 128, (lp.getY() - size * 64) / 128};
+	}
+
+	// Waves.
+
+	private void onWave(int wave)
+	{
+		if (book == null)
+		{
+			return;
+		}
+		Logbook.Active a = book.active;
+		if (a != null && (wave < a.wave || wave == 1 && a.wave > 1))
+		{
+			// A new run began without the old one closing.
+			book.finish(Logbook.Result.LEFT);
+			a = null;
+		}
+		if (a == null)
+		{
+			a = new Logbook.Active();
+			a.startedAt = System.currentTimeMillis();
+			book.active = a;
+			tracker.reset();
+			warnedShort = false;
+		}
+		else if (wave == a.wave + 1)
+		{
+			a.splits.add(a.ticks - a.waveStartTick);
+			pacer.learn(a.wave, waveSpent);
+			book.prayerSpent = pacer.getSpent();
+			book.prayerHitpoints = pacer.getHitpoints();
+		}
+		a.wave = wave;
+		a.waveStartTick = a.ticks;
+		waveSpent = 0;
+		pendingWave = wave;
+		pendingTick = tick;
+		liveSpot = null;
+		waveNpcs.clear();
+		unsaved = true;
+	}
+
+	/** True once every creature of the wave has appeared, or the grace period is over. */
+	private boolean readyToRead()
+	{
+		if (tick >= pendingTick + SPAWN_GRACE)
+		{
+			return true;
+		}
+		return matched(pendingWave).size() >= Waves.of(pendingWave).size();
+	}
+
+	/** The recent sightings that belong to a wave, at most as many of each creature as it holds. */
+	private List<Sighting> matched(int wave)
+	{
+		Map<Monster, Integer> left = new EnumMap<>(Monster.class);
+		for (Monster m : Waves.of(wave))
+		{
+			left.merge(m, 1, Integer::sum);
+		}
+		List<Sighting> list = new ArrayList<>();
+		for (Sighting s : sightings)
+		{
+			Integer n = left.get(s.monster);
+			if (s.tick >= pendingTick - 2 && n != null && n > 0)
+			{
+				left.put(s.monster, n - 1);
+				list.add(s);
+			}
+		}
+		return list;
+	}
+
+	private void readWave()
+	{
+		int wave = pendingWave;
+		pendingWave = 0;
+		List<Sighting> found = matched(wave);
+		sightings.clear();
+		if (found.isEmpty() || caveMap == null)
+		{
+			return;
+		}
+		List<Spawn> spawns = new ArrayList<>();
+		List<double[]> centres = new ArrayList<>();
+		for (Sighting s : found)
+		{
+			waveNpcs.add(s.npc);
+			int[] sw = southWest(s.npc, s.monster);
+			WorldPoint c = sw == null ? null : cave(sw[0], sw[1]);
+			if (c == null)
+			{
+				continue;
+			}
+			double half = (s.monster.getSize() - 1) / 2.0;
+			double[] centre = {c.getX() + half, c.getY() + half};
+			centres.add(centre);
+			spawns.add(caveMap.classify(centre[0], centre[1]));
+		}
+		if (spawns.size() != found.size())
+		{
+			return;
+		}
+		observedNow.clear();
+		for (int i = 0; i < found.size(); i++)
+		{
+			observedNow.add(new Placement(found.get(i).monster, spawns.get(i)));
+		}
+		observedWave = wave;
+		int before = tracker.rotation();
+		tracker.observe(wave, spawns);
+		Logbook.Active a = book.active;
+		if (a != null)
+		{
+			List<String> codes = new ArrayList<>();
+			for (Spawn s : spawns)
+			{
+				codes.add(s.getCode());
+			}
+			a.seen.put(wave, codes);
+		}
+		int rotation = tracker.rotation();
+		if (a != null && rotation > 0)
+		{
+			a.rotation = rotation;
+		}
+		if (rotation > 0 && rotation != before && config.chat())
+		{
+			chat("rotation " + rotation + ", read on wave " + wave + ".");
+		}
+		if (rotation > 0 && tracker.clean() && found.size() == Waves.of(wave).size())
+		{
+			learn(rotation, wave, found, spawns, centres);
+		}
+		unsaved = true;
+	}
+
+	/**
+	 * Remembers what a cleanly read wave showed: where each spawn point really is, and which
+	 * creature stood where, in case it differs from the table.
+	 */
+	private void learn(int rotation, int wave, List<Sighting> found, List<Spawn> spawns, List<double[]> centres)
+	{
+		for (int i = 0; i < found.size(); i++)
+		{
+			CaveMap.learn(book.anchors, spawns.get(i), centres.get(i)[0], centres.get(i)[1]);
+		}
+		List<Placement> table = book.placements(rotation, wave);
+		List<String> seen = new ArrayList<>();
+		boolean[] used = new boolean[found.size()];
+		for (Placement p : table)
+		{
+			String code = null;
+			// Prefer the sighting of this creature at the spawn the table expects.
+			for (int pass = 0; pass < 2 && code == null; pass++)
+			{
+				for (int i = 0; i < found.size(); i++)
+				{
+					if (!used[i] && found.get(i).monster == p.getMonster() && (pass == 1 || spawns.get(i) == p.getSpawn()))
+					{
+						used[i] = true;
+						code = spawns.get(i).getCode();
+						break;
+					}
+				}
+			}
+			if (code == null)
+			{
+				return;
+			}
+			seen.add(code);
+		}
+		boolean differs = false;
+		for (int i = 0; i < table.size(); i++)
+		{
+			differs |= !table.get(i).getSpawn().getCode().equals(seen.get(i));
+		}
+		if (differs)
+		{
+			book.corrections.put(rotation + ":" + wave, seen);
+		}
+		if (caveMap != null)
+		{
+			caveMap = new CaveMap(caveMap.getMinX(), caveMap.getMinY(), caveMap.getMaxX(), caveMap.getMaxY(), book.anchors);
+		}
+	}
+
+	// Prayer.
+
+	private void trackPrayer()
+	{
+		int prayer = client.getBoostedSkillLevel(Skill.PRAYER);
+		if (lastPrayer >= 0 && prayer < lastPrayer && book.active != null)
+		{
+			waveSpent += lastPrayer - prayer;
+		}
+		lastPrayer = prayer;
+	}
+
+	private void countDoses(ItemContainer inventory)
+	{
+		int prayerCount = 0;
+		int restoreCount = 0;
+		if (inventory != null)
+		{
+			for (Item item : inventory.getItems())
+			{
+				if (item.getId() <= 0)
+				{
+					continue;
+				}
+				int[] kind = doseCache.computeIfAbsent(item.getId(), this::doseKind);
+				if (kind[0] == 1)
+				{
+					prayerCount += kind[1] * item.getQuantity();
+				}
+				else if (kind[0] == 2)
+				{
+					restoreCount += kind[1] * item.getQuantity();
+				}
+			}
+		}
+		int total = prayerCount + restoreCount;
+		if (inCave && lastDoses >= 0 && total < lastDoses && book != null && book.active != null)
+		{
+			book.active.dosesUsed += lastDoses - total;
+			unsaved = true;
+		}
+		lastDoses = total;
+		prayerDoses = prayerCount;
+		restoreDoses = restoreCount;
+	}
+
+	private int[] doseKind(int itemId)
+	{
+		String name = itemManager.getItemComposition(itemId).getName();
+		if (name == null)
+		{
+			return new int[]{0, 0};
+		}
+		int open = name.lastIndexOf('(');
+		if (open < 0 || !name.endsWith(")"))
+		{
+			return new int[]{0, 0};
+		}
+		int doses;
+		try
+		{
+			doses = Integer.parseInt(name.substring(open + 1, name.length() - 1));
+		}
+		catch (NumberFormatException e)
+		{
+			return new int[]{0, 0};
+		}
+		String base = name.substring(0, open).trim();
+		if (base.equals("Prayer potion"))
+		{
+			return new int[]{1, doses};
+		}
+		if (base.equals("Super restore") || base.equals("Sanfew serum"))
+		{
+			return new int[]{2, doses};
+		}
+		return new int[]{0, 0};
+	}
+
+	// Where to stand.
+
+	private void plan()
+	{
+		Player me = client.getLocalPlayer();
+		if (grid == null || me == null || me.getLocalLocation() == null || book.active == null)
+		{
+			caveOverlay.show(Marks.NONE);
+			return;
+		}
+		int px = me.getLocalLocation().getSceneX();
+		int py = me.getLocalLocation().getSceneY();
+		int wave = book.active.wave;
+		int rotation = tracker.rotation();
+
+		List<NPC> alive = aliveFoes();
+		List<StandPlanner.Foe> foes = new ArrayList<>();
+		for (NPC npc : alive)
+		{
+			Monster m = monsterOf(npc);
+			int[] sw = southWest(npc, m);
+			if (m != null && sw != null)
+			{
+				foes.add(new StandPlanner.Foe(m, sw[0], sw[1]));
+			}
+		}
+
+		boolean jad = wave >= Waves.JAD;
+		if (!jad && config.standTile() && config.followFight() && !foes.isEmpty() && tick % PLAN_TICKS == 0)
+		{
+			StandPlanner.Spot best = StandPlanner.plan(grid, foes, px, py);
+			if (best != null && liveSpot != null)
+			{
+				int steps = Math.max(Math.abs(liveSpot.getX() - px), Math.abs(liveSpot.getY() - py));
+				StandPlanner.Spot kept = StandPlanner.score(grid, foes, liveSpot.getX(), liveSpot.getY(), steps);
+				liveSpot = kept.getCost() <= best.getCost() + MOVE_MARGIN ? kept : best;
+			}
+			else
+			{
+				liveSpot = best;
+			}
+		}
+		if (foes.isEmpty())
+		{
+			liveSpot = null;
+		}
+
+		// As the wave on now draws to a close, plan for the one about to spawn.
+		boolean closing = rotation > 0 && wave + 1 < Waves.JAD && alive.size() <= 1 && pendingWave == 0 && caveMap != null;
+		List<Marks.Ghost> ghosts = new ArrayList<>();
+		if (closing)
+		{
+			List<StandPlanner.Foe> next = new ArrayList<>();
+			for (Placement p : book.placements(rotation, wave + 1))
+			{
+				int[] t = caveMap.tile(p.getSpawn(), p.getMonster());
+				int[] s = scene(t[0], t[1]);
+				if (s != null)
+				{
+					next.add(new StandPlanner.Foe(p.getMonster(), s[0], s[1]));
+					ghosts.add(new Marks.Ghost(p.getMonster(), s[0], s[1]));
+				}
+			}
+			if (config.standTile() && !next.isEmpty() && (nextSpot == null || nextSpotWave != wave + 1 || tick % (PLAN_TICKS * 2) == 0))
+			{
+				nextSpot = StandPlanner.plan(grid, next, px, py);
+				nextSpotWave = wave + 1;
+			}
+		}
+		else
+		{
+			nextSpot = null;
+			nextSpotWave = 0;
+		}
+
+		List<NPC> stuck = new ArrayList<>();
+		if (config.stuckTags())
+		{
+			for (NPC npc : alive)
+			{
+				Monster m = monsterOf(npc);
+				int[] sw = southWest(npc, m);
+				if (m != null && m.isRanged() && sw != null && Chase.run(grid, m, sw[0], sw[1], px, py).getEnd() == Chase.End.STUCK)
+				{
+					stuck.add(npc);
+				}
+			}
+		}
+
+		Marks.Stand stand = null;
+		StandPlanner.Spot spot = shownSpot();
+		if (spot != null && config.standTile())
+		{
+			stand = new Marks.Stand(spot.getX(), spot.getY(), spot == nextSpot, spot.safeFromRange());
+		}
+		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck));
+	}
+
+	/** The spot to show: the next wave's once the wave on now is all but done, otherwise the live one. */
+	private StandPlanner.Spot shownSpot()
+	{
+		if (nextSpot != null && (liveSpot == null || aliveFoes().isEmpty()))
+		{
+			return nextSpot;
+		}
+		return liveSpot != null ? liveSpot : nextSpot;
+	}
+
+	private List<NPC> aliveFoes()
+	{
+		List<NPC> list = new ArrayList<>();
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv == null)
+		{
+			return list;
+		}
+		for (NPC npc : wv.npcs())
+		{
+			if (npc != null && !npc.isDead() && monsterOf(npc) != null)
+			{
+				list.add(npc);
+			}
+		}
+		return list;
+	}
+
+	/** The creature an NPC is, counting a split Tz-Kek's halves as the bats they fight like. */
+	private static Monster monsterOf(NPC npc)
+	{
+		Monster m = Monster.of(npc.getName(), npc.getCombatLevel());
+		if (m == null && "Tz-Kek".equalsIgnoreCase(npc.getName()))
+		{
+			return Monster.TZ_KIH;
+		}
+		return m;
+	}
+
+	// Saving and showing.
+
+	private void loadProfile()
+	{
+		profile = configManager.getRSProfileKey();
+		book = null;
+		if (profile == null)
+		{
+			return;
+		}
+		try
+		{
+			String saved = configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY);
+			if (saved != null && !saved.isEmpty())
+			{
+				Logbook read = gson.fromJson(saved, Logbook.class);
+				book = read == null ? null : read.repair();
+			}
+		}
+		catch (JsonParseException e)
+		{
+			log.warn("Could not read the saved logbook, starting afresh", e);
+		}
+		if (book == null)
+		{
+			book = new Logbook();
+		}
+		pacer = new PrayerPacer(book.prayerSpent, book.prayerHitpoints);
+		unsaved = false;
+		lastViewKey = null;
+	}
+
+	private void save()
+	{
+		if (profile == null || book == null || !unsaved)
+		{
+			return;
+		}
+		unsaved = false;
+		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, LOGBOOK_KEY, gson.toJson(book));
+	}
+
+	private void chat(String text)
+	{
+		chatMessageManager.queue(QueuedMessage.builder()
+			.type(ChatMessageType.CONSOLE)
+			.runeLiteFormattedMessage(new ChatMessageBuilder()
+				.append(ChatColorType.HIGHLIGHT).append("Codex Pilot: ")
+				.append(ChatColorType.NORMAL).append(text)
+				.build())
+			.build());
+	}
+
+	/** Hands the panel and the plaque what they show; the panel only when something it shows changed. */
+	private void publish(boolean force)
+	{
+		PilotPanel target = panel;
+		View view = buildView();
+		updatePlaque(view);
+		String key = viewKey(view);
+		if (!force && key.equals(lastViewKey))
+		{
+			return;
+		}
+		lastViewKey = key;
+		if (target != null)
+		{
+			SwingUtilities.invokeLater(() -> target.update(view));
+		}
+	}
+
+	private View buildView()
+	{
+		if (book == null || client.getGameState() != GameState.LOGGED_IN)
+		{
+			return View.loggedOut();
+		}
+		int prayer = client.getBoostedSkillLevel(Skill.PRAYER);
+		int level = client.getRealSkillLevel(Skill.PRAYER);
+		if (!inCave)
+		{
+			PrayerPacer.Pace full = pacer.pace(1, level, level, 0, 0, config.jadDoses());
+			return new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, prayer, level,
+				pacer.learned(), full.getDosesNeeded(), 0, null, copy(book));
+		}
+		Logbook.Active a = book.active;
+		int wave = a == null ? 0 : a.wave;
+		PrayerPacer.Pace pace = wave > 0 ? pacer.pace(wave, prayer, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
+		if (pace != null && config.chat())
+		{
+			if (pace.getState() == PrayerPacer.State.SHORT && !warnedShort && wave > 6)
+			{
+				warnedShort = true;
+				chat("prayer is behind pace: about " + Math.max(1, (int) Math.ceil(-pace.getSpare())) + " doses short for the waves left at your rate.");
+			}
+			else if (pace.getState() == PrayerPacer.State.AMPLE || pace.getState() == PrayerPacer.State.ON_PACE)
+			{
+				warnedShort = false;
+			}
+		}
+
+		View.Stand stand = null;
+		StandPlanner.Spot spot = shownSpot();
+		if (spot != null && caveMap != null && config.standTile())
+		{
+			double[] f = fraction(spot.getX(), spot.getY());
+			List<View.Fate> fates = new ArrayList<>();
+			for (StandPlanner.Outcome o : spot.getOutcomes())
+			{
+				fates.add(fate(o));
+			}
+			if (f != null)
+			{
+				stand = new View.Stand(f[0], f[1], spot == nextSpot, spot.safeFromRange(), spot.getSteps(), fates);
+			}
+		}
+		double[] you = null;
+		Player me = client.getLocalPlayer();
+		if (me != null && me.getLocalLocation() != null && caveMap != null)
+		{
+			you = fraction(me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY());
+		}
+		Integer versus = null;
+		if (a != null && wave > 1 && book.capes > 0)
+		{
+			int best = book.bestSplit(wave - 1);
+			if (best > 0)
+			{
+				versus = a.waveStartTick - best;
+			}
+		}
+		int rotation = tracker.rotation();
+		List<Placement> observed = observedWave == wave ? observed() : java.util.Collections.emptyList();
+		return new View(View.State.IN_CAVE, wave, rotation, tracker.candidates(), tracker.decidingWave(wave + 1), tracker.clean(),
+			aliveFoes().size(), stand, you, pace, prayer, level, pacer.learned(), 0, a == null ? 0 : a.ticks, versus, copy(book))
+			.withObserved(observed);
+	}
+
+	private List<Placement> observed()
+	{
+		return new ArrayList<>(observedNow);
+	}
+
+	private static View.Fate fate(StandPlanner.Outcome o)
+	{
+		Monster m = o.getFoe().getMonster();
+		Chase c = o.getChase();
+		switch (c.getEnd())
+		{
+			case STUCK:
+				if (o.isInReach())
+				{
+					return new View.Fate(m, "stuck where you can hit it", true);
+				}
+				return new View.Fate(m, m.isRanged() ? "stuck, cannot see you" : "stuck out of reach", true);
+			case AT_ONCE:
+				return new View.Fate(m, m.isRanged() ? "can hit you at once" : "already on you", false);
+			default:
+				return new View.Fate(m, (m.isRanged() ? "sees you in " : "reaches you in ") + c.getTicks() + (c.getTicks() == 1 ? " tick" : " ticks"), false);
+		}
+	}
+
+	/** A scene tile as fractions of the cave's width and height, for the panel's chart. */
+	private double[] fraction(int sceneX, int sceneY)
+	{
+		WorldPoint p = cave(sceneX, sceneY);
+		if (p == null || caveMap == null)
+		{
+			return null;
+		}
+		double fx = (p.getX() - caveMap.getMinX()) / (double) Math.max(1, caveMap.getMaxX() - caveMap.getMinX());
+		double fy = (p.getY() - caveMap.getMinY()) / (double) Math.max(1, caveMap.getMaxY() - caveMap.getMinY());
+		return new double[]{Math.max(0, Math.min(1, fx)), Math.max(0, Math.min(1, fy))};
+	}
+
+	/** A copy of the logbook for the Swing thread, so it never reads one being written. */
+	private Logbook copy(Logbook b)
+	{
+		return gson.fromJson(gson.toJson(b), Logbook.class).repair();
+	}
+
+	/** What the panel shows, minus the clock, which only needs a fresh draw every few seconds. */
+	private String viewKey(View v)
+	{
+		StringBuilder k = new StringBuilder();
+		k.append(client.getGameState()).append(inCave).append(tracker.rotation())
+			.append(tracker.candidates()).append(book == null ? "" : book.attempts + "/" + book.capes)
+			.append(book == null || book.active == null ? "" : book.active.wave + "/" + book.active.dosesUsed)
+			.append(prayerDoses).append('/').append(restoreDoses).append('/').append(client.getBoostedSkillLevel(Skill.PRAYER));
+		StandPlanner.Spot spot = shownSpot();
+		if (spot != null)
+		{
+			k.append(spot.getX()).append(',').append(spot.getY()).append(spot == nextSpot);
+		}
+		if (inCave)
+		{
+			// The run clock ticks on the panel every five seconds or so.
+			k.append('t').append(tick / 8);
+		}
+		return k.toString();
+	}
+
+	private void updatePlaque(View v)
+	{
+		if (!config.plaque() || v.getState() != View.State.IN_CAVE || v.getWave() == 0)
+		{
+			plaque.show(null, null, null, null);
+			return;
+		}
+		String note = v.getRotation() > 0 ? "Rotation " + v.getRotation() : "Reading rotation";
+		PrayerPacer.Pace pace = v.getPace();
+		String prayer = pace == null ? null : Format.doses(pace.getDoses()) + " (" + Format.spare(pace.getSpare()) + ")";
+		plaque.show("Wave " + v.getWave(), note, prayer, pace == null ? Theme.TEXT_MUTED : Theme.of(pace.getState()));
+	}
+
+	/** Drops sightings too old to belong to any wave, so the list cannot grow. */
+	private void pruneSightings()
+	{
+		Iterator<Sighting> it = sightings.iterator();
+		while (it.hasNext())
+		{
+			if (it.next().tick < tick - 10)
+			{
+				it.remove();
+			}
+		}
+	}
+}
