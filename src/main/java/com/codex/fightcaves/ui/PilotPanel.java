@@ -2,6 +2,7 @@ package com.codex.fightcaves.ui;
 
 import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.Damage;
+import com.codex.fightcaves.core.Form;
 import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
@@ -224,7 +225,7 @@ public class PilotPanel extends PluginPanel
 		{
 			status = "Waiting for the first wave";
 		}
-		crest.update(view.rotation > 0 ? "ROTATION " + view.rotation : "TZHAAR FIGHT CAVE", figure, "/ " + Waves.LAST, status, color,
+		crest.update(view.rotation > 0 ? "ROTATION " + view.rotation : "TZHAAR FIGHT CAVE", figure, view.wave == Waves.LAST ? LAST_WAVE : "/ " + Waves.LAST, status, color,
 			view.wave == Waves.JAD ? Theme.BLOOD : Theme.GOLD, view.wave / (double) Waves.LAST);
 	}
 
@@ -256,9 +257,13 @@ public class PilotPanel extends PluginPanel
 	}
 
 	/** The crest on Jad's wave: the wave alone, not even the rotation. */
+	/** The crest's word beside 63 on the last wave. */
+	static final String LAST_WAVE = "final wave";
+
 	private void stepBackCrest()
 	{
-		crest.update("TZHAAR FIGHT CAVE", String.valueOf(Waves.JAD), "/ " + Waves.LAST, STEPPED_BACK, Theme.BLOOD, Theme.BLOOD, 1.0);
+		// "63 / 63" would say the same figure twice: the last wave is named instead.
+		crest.update("TZHAAR FIGHT CAVE", String.valueOf(Waves.JAD), LAST_WAVE, STEPPED_BACK, Theme.BLOOD, Theme.BLOOD, 1.0);
 	}
 
 	/** True when a page holds only the stepped-back card, for tests. */
@@ -642,7 +647,9 @@ public class PilotPanel extends PluginPanel
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
 		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Doses a run", view.paceLearned ? "at your rate" : "a first guess", Theme.TEAL));
-		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best cape", b.capes > 0 ? Format.count(b.capes) + (b.capes == 1 ? " cape" : " capes") : "none yet", Theme.GOLD));
+		// Your capes and best cape are in the crest just above; the tile gives how often a run ends in one.
+		tiles.add(new StatTile(b.attempts > 0 ? Form.percent(b.capes, b.attempts) + "%" : "-", "Cape rate",
+			b.attempts > 0 ? "in " + Format.count(b.attempts) + (b.attempts == 1 ? " run" : " runs") : "no runs yet", Theme.GOLD));
 		stack.add(tiles);
 		if (view.jadAt != null)
 		{
@@ -659,7 +666,8 @@ public class PilotPanel extends PluginPanel
 		stack.add(bankCard(view.banked, view.fullRunDoses, System.currentTimeMillis()));
 		if (!b.runs.isEmpty())
 		{
-			stack.add(new SectionHeader("Last run", Format.day(b.runs.get(b.runs.size() - 1).endedAt)));
+			// The scroll carries its own date, so the heading does not say it twice.
+			stack.add(new SectionHeader("Last run"));
 			Logbook.Run last = b.runs.get(b.runs.size() - 1);
 			stack.add(new RunScroll(RunStory.of(b, last)));
 			if (last.fall != null)
@@ -873,17 +881,33 @@ public class PilotPanel extends PluginPanel
 		}
 		JPanel tiles = new JPanel(new GridLayout(2, 2, 6, 6));
 		tiles.setOpaque(false);
-		tiles.add(new StatTile(Format.count(b.capes), "Capes", b.attempts > 0 ? Math.round(100.0 * b.capes / b.attempts) + "% of runs" : "", Theme.GOLD_BRIGHT));
+		// The crest above already gives your capes and, at the cave mouth, your best cape, so the
+		// tiles say what it does not: how often a run ends in a cape and what a cape usually takes.
+		int usual = Form.usualCape(b);
+		int timed = Form.timedCapes(b);
+		String usualNote = usual < 0 ? "no cape yet" : view.state != View.State.OUTSIDE && b.bestTicks > 0
+			? "best " + Format.ticks(b.bestTicks) : timed == 1 ? "your one timed cape" : "middle cape";
+		tiles.add(new StatTile(b.attempts > 0 ? Form.percent(b.capes, b.attempts) + "%" : "-", "Cape rate", b.attempts > 0 ? "of every run" : "no runs yet", Theme.GOLD_BRIGHT));
 		tiles.add(new StatTile(Format.count(b.attempts), "Runs", "since installing", Theme.TEXT));
-		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best time", "caped runs", Theme.GREEN));
+		tiles.add(new StatTile(usual < 0 ? "-" : Format.ticks(usual), "Usual cape", usualNote, Theme.GREEN));
 		tiles.add(new StatTile(b.furthest > 0 ? String.valueOf(b.furthest) : "-", "Furthest", "wave reached", Theme.EMBER));
 		stack.add(tiles);
+
+		Form form = Form.of(b);
+		if (form != null)
+		{
+			stack.add(new SectionHeader("Form", "latest on the right"));
+			Card card = new Card(new BorderLayout(0, 6));
+			card.add(new FormStrip(form), BorderLayout.NORTH);
+			card.add(Ui.wrapped(form.line(), Theme.small(), Theme.TEXT_MUTED, WIDTH - 24), BorderLayout.CENTER);
+			stack.add(card);
+		}
 
 		if (!b.runs.isEmpty())
 		{
 			Logbook.Run run = comparedRun(b);
 			boolean latest = run == b.runs.get(b.runs.size() - 1);
-			stack.add(new SectionHeader("The run", latest ? "latest" : Format.day(run.endedAt)));
+			stack.add(new SectionHeader("The run", latest ? "latest" : "picked below"));
 			stack.add(new RunScroll(RunStory.of(b, run)));
 			buildFall(stack, b);
 			buildSplits(stack, b);
@@ -961,7 +985,8 @@ public class PilotPanel extends PluginPanel
 		Splits splits = Splits.of(b.runs, run);
 		boolean cape = splits.getPbTicks() > 0;
 		boolean latest = run == b.runs.get(b.runs.size() - 1);
-		stack.add(new SectionHeader("Splits", (latest ? "last run" : "run of " + Format.day(run.endedAt)) + ", wave " + run.wave));
+		// The scroll above already says where the run ended.
+		stack.add(new SectionHeader("Splits", latest ? "last run" : "run of " + Format.day(run.endedAt)));
 		Card card = new Card(new BorderLayout(0, 6));
 		StackPanel rows = new StackPanel(1, 0);
 		rows.add(cape ? SplitRow.header("WAVES", "CAPE", "BEST", "RUN") : SplitRow.header("WAVES", "BEST", "RUN"));
@@ -994,7 +1019,7 @@ public class PilotPanel extends PluginPanel
 		{
 			return;
 		}
-		stack.add(new SectionHeader("The fall", "wave " + run.wave));
+		stack.add(new SectionHeader("The fall", "why it ended"));
 		stack.add(fallCard(run));
 	}
 
