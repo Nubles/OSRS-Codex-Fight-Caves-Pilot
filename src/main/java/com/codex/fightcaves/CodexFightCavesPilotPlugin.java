@@ -310,6 +310,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				// The next account, or this one after playing elsewhere, may carry something else:
 				// the first inventory seen after logging in is the new base, not doses drunk.
 				lastDoses = -1;
+				// Nor is what the last account carried and wielded: the game may send nothing for
+				// an empty pack or empty hands, so the ready check would read the old ones.
+				prayerDoses = 0;
+				restoreDoses = 0;
+				foodCount = 0;
+				weaponName = null;
+				weaponRange = 1;
+				ammo = 0;
 				earlyCall.clear();
 				save();
 				resetCave();
@@ -1061,7 +1069,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				{
 					continue;
 				}
-				if (foodCache.computeIfAbsent(item.getId(), id -> Ready.isFood(itemManager.getItemComposition(id).getName())))
+				if (foodCache.computeIfAbsent(item.getId(), id -> !noted(id) && Ready.isFood(itemManager.getItemComposition(id).getName())))
 				{
 					food += item.getQuantity();
 				}
@@ -1132,8 +1140,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		return Banked.newest(own, stewardBank);
 	}
 
+	/** True for a banknote: noted sharks or potions carried are not food or doses to drink. */
+	private boolean noted(int itemId)
+	{
+		return itemManager.getItemComposition(itemId).getNote() != -1;
+	}
+
 	private int[] doseKind(int itemId)
 	{
+		if (noted(itemId))
+		{
+			return new int[]{0, 0};
+		}
 		String name = itemManager.getItemComposition(itemId).getName();
 		if (name == null)
 		{
@@ -1480,8 +1498,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			return;
 		}
+		// Written out first: on client close this runs off the client thread, and a logbook caught
+		// changing mid-write must stay marked unsaved rather than be lost.
+		String json = gson.toJson(book);
 		unsaved = false;
-		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, LOGBOOK_KEY, gson.toJson(book));
+		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, LOGBOOK_KEY, json);
 	}
 
 	private void chat(String text)

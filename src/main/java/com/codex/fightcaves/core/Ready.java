@@ -132,7 +132,8 @@ public final class Ready
 		{
 			return false;
 		}
-		return n.contains("crossbow") || n.contains("ballista") || n.endsWith(" bow") || n.contains("bow (") || n.contains("shortbow")
+		// The Seercull is a shortbow without the word, and the atlatl throws darts from the quiver.
+		return n.contains("crossbow") || n.contains("seercull") || n.contains("atlatl") || n.contains("ballista") || n.endsWith(" bow") || n.contains("bow (") || n.contains("shortbow")
 			|| n.contains("longbow") || n.contains("dark bow") || n.contains("twisted bow") || n.contains("comp bow") || n.contains("composite bow");
 	}
 

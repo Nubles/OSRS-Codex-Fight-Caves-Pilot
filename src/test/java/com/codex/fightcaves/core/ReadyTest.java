@@ -51,6 +51,9 @@ public class ReadyTest
 		assertFalse(Ready.needsAmmo("Venator bow"));
 		assertFalse(Ready.needsAmmo("Rune scimitar"));
 		assertTrue(Ready.needsAmmo("Armadyl crossbow"));
+		// Both fire from the quiver, though neither name says bow.
+		assertTrue(Ready.needsAmmo("Seercull"));
+		assertTrue(Ready.needsAmmo("Eclipse atlatl"));
 	}
 
 	@Test
