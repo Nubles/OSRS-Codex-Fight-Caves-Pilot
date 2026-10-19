@@ -195,4 +195,31 @@ public class LogbookTest
 		assertEquals(table.size(), book.placements(1, 1).size());
 		assertEquals(Rotations.placements(1, 2).size(), book.placements(1, 2).size());
 	}
+
+	@Test
+	public void jadOnTheFloorWithNoRunOpenPicksOneUpOnHisWave()
+	{
+		// Turned on, or logged in, part way through Jad's wave: no call comes, but he is out.
+		Logbook book = new Logbook();
+		assertTrue(book.jadSeen(1000));
+		assertEquals(Waves.JAD, book.active.wave);
+		assertTrue(book.active.partial);
+		assertEquals(Waves.JAD - 1, book.active.splits.size());
+		// Seen again on the next tick, nothing changes.
+		assertFalse(book.jadSeen(2000));
+		assertEquals(1000, book.active.startedAt);
+	}
+
+	@Test
+	public void jadOnTheFloorAfterAMissedCallMovesTheRunOnToHisWave()
+	{
+		Logbook book = new Logbook();
+		Logbook.Active a = book.begin(1, 0);
+		play(a, 1, 60, 40);
+		assertEquals(61, a.wave);
+		assertTrue(book.jadSeen(0));
+		assertEquals(Waves.JAD, a.wave);
+		assertTrue(a.partial);
+		assertFalse(book.jadSeen(0));
+	}
 }

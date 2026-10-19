@@ -529,11 +529,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				died = true;
 			}
 			lastHp = hp;
-			if (book.active != null && book.active.wave < Waves.JAD && jadOnFloor())
+			if ((book.active == null || book.active.wave < Waves.JAD) && jadOnFloor() && book.jadSeen(System.currentTimeMillis()))
 			{
-				// Jad or a healer is out but the wave call was missed (a run picked up part way, or
-				// one carried on elsewhere): it is the Jad wave, and nothing may be offered on it.
-				Logbook.advance(book.active, Waves.JAD);
+				// Jad or a healer is out but the wave call was missed, or no run was open at all (the
+				// plugin turned on, or a run carried on elsewhere): it is the Jad wave, and nothing
+				// may be offered on it.
 				waveSpent = 0;
 				unsaved = true;
 			}

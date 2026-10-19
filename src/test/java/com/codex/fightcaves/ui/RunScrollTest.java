@@ -71,7 +71,7 @@ public class RunScrollTest
 		best.hurt = new ArrayList<>(Collections.nCopies(63, 2));
 		best.hurt.set(45, 44);
 		assertEquals(Arrays.asList("A new best cape, 1:16 under the old one.", "63 waves at your fastest yet, in bright gold.",
-			"Hurt most on wave 46, which took 44."), RunScroll.lines(RunStory.of(Arrays.asList(first, best), best, 2)));
+			"Hurt most on wave 46: 44 damage."), RunScroll.lines(RunStory.of(Arrays.asList(first, best), best, 2)));
 
 		Logbook.Run slower = run(Logbook.Result.CAPE, 63, 52, 3);
 		assertEquals(Collections.singletonList("2:31 off your best cape, the one just before it."),

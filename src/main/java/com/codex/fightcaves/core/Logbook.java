@@ -248,6 +248,29 @@ public final class Logbook
 	}
 
 	/**
+	 * TzTok-Jad or a healer is on the floor, so it is Jad's wave whatever the wave calls said. A
+	 * run on an earlier wave is moved on to it (the call was missed), and with no run open one is
+	 * picked up there (the plugin turned on, or you logged in, part way through his wave), so
+	 * that nothing is offered while he is out.
+	 *
+	 * @return true when the run on now changed
+	 */
+	public boolean jadSeen(long now)
+	{
+		if (active == null)
+		{
+			begin(Waves.JAD, now);
+			return true;
+		}
+		if (active.wave < Waves.JAD)
+		{
+			advance(active, Waves.JAD);
+			return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Moves the run on to the wave just called: the wave before is timed, and waves skipped
 	 * (a wave message missed) are left untimed and the run marked partial. Calling the same
 	 * wave again, as the game does when you log back in, restarts its clock.

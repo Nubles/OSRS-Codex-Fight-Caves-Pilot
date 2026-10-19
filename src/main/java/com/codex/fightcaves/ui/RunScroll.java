@@ -127,7 +127,7 @@ class RunScroll extends JPanel
 		}
 		if (worst > 0)
 		{
-			out.add("Hurt most on wave " + worst + ", which took " + s.hurt(worst) + ".");
+			out.add("Hurt most on wave " + worst + ": " + s.hurt(worst) + " damage.");
 		}
 		return out;
 	}
