@@ -1,78 +1,90 @@
 # Codex Fight Caves Pilot
 
-**Your Fight Cave rotation from the first spawns, where to stand every wave, and prayer paced against the waves left.** Walk in and fight as normal: the pilot watches where the first creatures appear and works out which of the cave's 15 rotations you are on, with no buttons to press. From then on it gilds the tile where rangers and magers get stuck behind a pillar, outlines where the next wave will appear as the current one ends, and keeps your prayer doses measured against what the rest of the run will take.
+**Your Fight Cave rotation read from the first spawns, where to stand every wave, and your prayer paced against the waves left.** Walk in and fight as normal: there are no buttons to press. The pilot works out which of the cave's 15 rotations you are on, gilds the tile where rangers and magers get stuck behind a pillar, and keeps your prayer doses measured against what the rest of the run will take. On the Jad wave it steps back completely.
 
-It is part of the **Codex** suite, alongside [Codex Navigator](https://github.com/Nubles/OSRS-Codex-Navigator), [Codex Guardian](https://github.com/Nubles/OSRS-Codex-Guardian), [Codex Gear Roadmap](https://github.com/Nubles/OSRS-Codex-Gear-Roadmap), [Codex Session Chronicle](https://github.com/Nubles/OSRS-Codex-Session-Chronicle), [Codex Ledger](https://github.com/Nubles/OSRS-Codex-Ledger) and [Codex Quartermaster](https://github.com/Nubles/OSRS-Codex-Quartermaster), and shares their look: warm ink, aged gold and the game's own fonts.
-
-<p align="center">
-  <img src="docs/screenshots/pilot.png" width="225" alt="Pilot">
-  <img src="docs/screenshots/waves.png" width="225" alt="Waves">
-  <img src="docs/screenshots/records.png" width="225" alt="Records">
-</p>
-
-## What it does
-
-- **Rotation, read for you.** Wave 1 narrows the 15 rotations to three and wave 2 almost always settles it; rotations 7 and 8 look the same until wave 4, and the panel says so. No clicking spawn buttons or pressing "next" every wave. Rejoin a run after logging out and it picks up where it was.
-- **Where to stand.** Creatures in the cave walk straight at you with no path finding, which is why pillars work. The pilot plays that walk out for every creature and every tile you could reach, using the cave's real collision and line of sight, and gilds the tile where the fewest can hit you: rangers and magers stuck out of sight, melee creatures stuck where you can still shoot them, and the rest arriving one at a time rather than together. It also avoids tiles where two attack styles reach you at once, since one prayer cannot block both, tiles where a ranger or mager ends up beside you and switches to melee, and letting a Tz-Kek die on top of you, where its two halves start on you at once. The panel lists what each creature will do if you stand there ("Mager: stuck, cannot see you", "Melee: reaches you in 6 ticks").
-- **Kill order.** A numbered gilt seal over each creature says what to kill first. Whatever hits you comes first, ordered by how much damage it deals for every hitpoint it takes to kill, so the weak creature hitting hard dies before the strong one hitting softly. Your protection prayer counts: what it blocks can wait. Bats come early because they drain prayer even through it, a Yt-MejKot jumps the queue once anything else is below half health because it heals them, and a Tz-Kek is weighed with the two halves it splits into. After that come creatures stuck where you can hit them, deadliest first. Nothing is shown on the Jad wave.
-- **The prayer to use.** From where you stand, the pilot works out which protection prayer blocks the most of what can hit you in the next couple of ticks, and shows it on the plaque and in the panel, with a nudge when it is not on. A ranger or mager beside you counts as melee, since that is how they hit up close. When two styles are hitting you at once it says so, because no prayer covers both and the gilt tile is where to lose one. Nothing is shown on the Jad wave.
-- **Your weapon's reach.** The pilot reads what you wield, so a blowpipe, a crossbow, a longbow and a staff each get the tiles they can really hit a stuck creature from.
-- **Follow the fight.** During a wave the tile is re-worked from where the creatures really are, and only moves when a new tile is clearly safer, so it does not flicker.
-- **The next wave.** As a wave draws to a close, dashed outlines on the floor show where the next wave's creatures will appear, coloured by the prayer that answers them, and a teal tile shows where to be standing when they do.
-- **Wave rehearsal.** As a wave draws to a close, the pilot plays the next one out before it spawns. On the floor, a dotted trail runs from each spawn point to where that creature will stop, ending in a teal ring where it sticks or an ember one where it reaches you, with how many ticks it takes. On the panel the same wave plays at the game's pace on a true map of the cave, its floor and pillars read from the game's own collision map, looping with a pause on how it ends, under one line such as "First hit on tick 6 (3.6s), from the melee. 1 of 2 stick."
-- **Why that tile.** When the gilt tile is clearly safer than where you are, the panel sets the two side by side, creature by creature ("Mager: hits now" against "stuck"), with one sentence on what changes: fewer creatures able to hit you, one prayer covering what is left instead of two styles at once, or the first hit landing later. It works for the fight on now and for where to be when the next wave spawns.
-- **Road to Jad.** Once the rotation is known, every wave left is planned the way the pilot plans the next one, from the tile the wave before leaves you on, and rated on a tablet of 63 stones: teal where every ranger and mager sticks behind a pillar, gold where one style reaches you wherever you stand (one prayer covers it), ember where two styles reach you at once and one prayer cannot block both. A line names the next hard wave, how many waves away it is and which creatures make it hard. The ratings are saved, so the Waves page shows them for any rotation you have fought, and its stones can be clicked to chart a wave.
-- **Eat warning.** When what can hit you in the next couple of ticks, past the protection prayer you have up, adds up to your hitpoints or more, the plaque shows "Eat: 26 can land" in blood and the panel says "Eat now". Only what your prayer lets through counts, so a mager you are praying against never sets it off. Not shown on the Jad wave.
-- **Stuck tags.** A small "Stuck" tag floats over any ranger or mager that cannot hit you where you stand. Not shown on the Jad wave.
-- **Prayer pacing.** The cave's waves follow a fixed ladder, so what is left of a run is known exactly. The pilot learns how much prayer you spend per hitpoint of wave on the waves that need protection prayers, and turns that into doses: how many you carry, how many the rest of the run takes, how many you have spare, and the level to sip at so no dose overflows. Doses for Jad are held back (four by default). If you fall behind, a line in the chat box says by how much. On the Jad wave itself the gauge and the plaque are put away.
-- **Waves.** Every wave of every rotation, to study before you go in: pick a rotation, click any wave to see it on the cave chart with the wave after it outlined.
-- **Where it hurts.** Every hit you take is filed under the wave it landed on. Records shows the damage you take on an average wave in each stretch of seven, with the stretch that hurts most lit, a gold tick for the run you picked, and that run's worst waves ("Hurt most on waves 46 (45), 59 (44) and 53 (42). Wave 59 took 44 before the fall.").
-- **Ready check.** Away from the cave, a short check of what you bring: whether your Prayer level gives all three protection prayers (and which creatures hit through if not), how far your weapon reaches, whether a bow or crossbow has ammunition in the quiver (a blowpipe or crystal bow needs none), how much food you carry, and whether you carry any prayer potions at all.
-- **Runs in the bank.** From your last look at the bank, or [Codex Bank Steward](https://github.com/Nubles/OSRS-Codex-Bank-Steward)'s shared snapshot if that is newer, the pilot counts your prayer potions, super restores and sanfew serums and says how many whole runs they cover at your rate, and how old the count is.
-- **Supply check.** At the cave mouth the pilot sets the doses you carry against what a whole run takes at your rate, Jad's share included, and says whether that is enough, how many are spare, or how many more to bring.
-- **Why a run fell.** When a run ends before Jad, its last ten seconds are read for the likeliest cause, and Records and the cave mouth say it in a sentence with your hitpoints drawn falling: prayer ran out (with how many doses were still in your pack), two attack styles reached you at once, the wrong prayer was up, no prayer was up, or you were simply worn down, with what did it. It is a look back after the run, never a call during a wave, and a fall to Jad is not reviewed.
-- **Your pace to Jad.** Your usual time for each wave (the middle of every time you have cleared it) adds up to when a run reaches Jad: "At your usual pace, Jad at about 41:10 on the run clock" during a run, and how long a whole run takes you at the cave mouth. It waits until every wave still to come has been cleared at least twice.
-- **Run scroll.** Every finished run is kept as a scroll on the Records page and at the cave mouth: which fire cape it was ("8th fire cape") or the wave it fell on, its time in large gilt figures, and the whole run as a skyline of 63 waves, each as tall as the wave took. A wave lit bright gold was your fastest yet, teal came within a tenth of it, and ember hanging below the floor is the damage each wave cost. Under it, a line or two on what made the run: a new best cape and by how much, how it compared with the cape before it, how many waves were your fastest yet, and the wave that hurt most. Hover a wave for its time against your best before it. Each wave is weighed only against the runs that came before, so a run keeps the story it had on the day.
-- **Your record on each rotation.** As soon as the rotation is read, its card says how your runs on it have gone ("Your runs on it: 3 capes from 4, best 43:58. Wave 46 ended 2 of them."), and the Waves page says the same for any rotation you study.
-- **Form.** Your last ten runs as a row of badges on Records, the way a league table shows a team's last games: a gilt cape, the wave a run fell on in red, or the wave you walked out on in grey, with a gilt line under capes in a row. One line sets those runs against every run you have made: "Last 10: 7 capes (70%), against 35% over all 20 runs. 4 in a row."
-- **Records.** Your cape rate, runs, usual cape time (the middle of your timed capes) and furthest wave, where your runs end in stretches of seven waves, and recent runs with rotation, time and doses drunk.
-- **Splits.** Every run is timed wave by wave and read the way speedrunners read a run. Records cuts it into nine stretches of seven waves, with your best cape's time, your best ever for that stretch (gilt when the run matched it) and how the run did against the cape, green when ahead. Click any recent run to set its splits against the cape instead of the latest. Adding up your best of every wave gives the time you have already proven you can do, and the panel says how far under your best cape that is and which stretch holds the most to win back. During a run, the last three waves sit against the same waves of your best cape, and the run clock against the cape at the same wave.
-- **Plaque.** A slim plaque in the game view with the wave, the rotation and your doses against pace.
+It is part of the **Codex** suite of RuneLite plugins and shares their look: warm ink, aged gold and the game's own fonts.
 
 <p align="center">
-  <img src="docs/screenshots/pilot-next.png" width="225" alt="Planning the next wave">
-  <img src="docs/screenshots/reading.png" width="225" alt="Reading the rotation">
-  <img src="docs/screenshots/outside.png" width="225" alt="At the cave mouth">
+  <img src="docs/screenshots/pilot.png" width="225" alt="The Pilot page during wave 37">
+  <img src="docs/screenshots/waves.png" width="225" alt="The Waves page">
+  <img src="docs/screenshots/records.png" width="225" alt="The Records page">
 </p>
+
+## In the cave
+
+- **Rotation, read for you.** Wave 1 narrows the 15 rotations to three and wave 2 almost always settles it. Rotations 7 and 8 look the same until wave 4, and the panel says so. Log out mid-run and it picks up where it was when you log back in.
+- **Where to stand.** Cave creatures walk straight at you with no path finding, which is why pillars work. The pilot plays that walk out for every creature and every tile you could reach, using the cave's real collision and line of sight, and gilds the tile where the fewest can hit you. It avoids tiles where two attack styles reach you at once, where a ranger or mager ends up beside you and switches to melee, and where a Tz-Kek would split on top of you. The panel lists what each creature will do if you stand there ("Mager: stuck, cannot see you").
+- **Your weapon's reach.** It reads what you wield, so a blowpipe, a crossbow, a longbow and a staff each get the tiles they can really hit a stuck creature from.
+- **Kill order.** A numbered seal over each creature: whatever hits you hardest for the health it takes to kill comes first, then creatures stuck where you can hit them. Your protection prayer counts, bats come early because they drain prayer through it, and a Yt-MejKot jumps the queue once something it can heal is hurt.
+- **The prayer to use.** The protection prayer that blocks the most of what can hit you from where you stand, with a nudge when it is not on. When two styles hit you at once it says so, since no prayer covers both.
+- **Eat warning.** When what can land on you in the next couple of ticks, past the prayer you have up, adds up to your hitpoints, the plaque shows "Eat: 26 can land".
+- **The next wave, rehearsed.** As a wave draws to a close, outlines on the floor show where the next wave appears and a teal tile shows where to be. The panel plays that wave out on a true map of the cave, each creature walking to where it will stop, under a line such as "First hit on tick 6 (3.6s), from the melee. 1 of 2 stick."
+- **Why that tile.** When the gilt tile is clearly safer than where you are, the panel sets the two side by side, creature by creature, with one sentence on what changes.
+- **Prayer pacing.** The waves follow a fixed ladder, so what is left of a run is known exactly. The pilot learns how much prayer you spend per hitpoint of wave and turns it into doses: what you carry, what the rest of the run takes, how many are spare and the level to sip at. Doses for Jad are held back (four by default).
+- **Splits.** The run clock against your best cape at the same wave, and your last three waves against the same waves of that cape.
+- **Plaque.** A slim plaque in the game view with the wave, the rotation, your doses against pace and the prayer to use.
+
 <p align="center">
   <img src="docs/screenshots/rehearsal.png" width="225" alt="Rehearsing the next wave">
   <img src="docs/screenshots/compare.png" width="225" alt="Where you are against the gilt tile">
+  <img src="docs/screenshots/plaque.png" alt="The plaque">
+</p>
+
+## Before you go in
+
+- **Waves.** Every wave of every rotation to study: pick a rotation, click any wave to see it on the cave chart with the wave after it outlined.
+- **Road to Jad.** Once you have fought a rotation, each of its waves is rated on a tablet of 63 stones: teal where every ranger and mager sticks behind a pillar, gold where one prayer covers what reaches you, ember where two styles reach you from every tile. A line names the next hard wave and why.
+- **Ready check.** Whether your Prayer level gives all three protection prayers, how far your weapon reaches, whether a bow or crossbow has ammunition, how much food you carry and whether you carry prayer potions.
+- **Supply check.** The doses you carry against a whole run at your rate, Jad's share included: enough, how many spare, or how many more to bring.
+- **Runs in the bank.** How many whole runs the prayer potions, super restores and sanfew serums in your bank cover, from your last look at the bank (or Codex Bank Steward's snapshot when that is newer).
+- **Your pace to Jad.** Your usual time for each wave adds up to when a run reaches Jad, once every wave has been cleared at least twice.
+
+<p align="center">
+  <img src="docs/screenshots/outside.png" width="225" alt="At the cave mouth">
   <img src="docs/screenshots/road.png" width="225" alt="The road to Jad">
+  <img src="docs/screenshots/supply.png" width="225" alt="The supply check">
 </p>
+
+## After a run
+
+- **Run scroll.** Every finished run is kept as a scroll: which fire cape it was or the wave it fell on, its time, and the whole run as a skyline of 63 waves, gold where a wave was your fastest yet, with the damage each wave cost hanging below. A line or two says what made the run.
+- **Why a run fell.** When a run ends before Jad, its last ten seconds are read for the likeliest cause (prayer ran out, two styles at once, the wrong prayer, no prayer, or worn down) and said in a sentence beside your hitpoints falling. A fall to Jad is not reviewed.
+- **Records.** Your cape rate, runs, usual cape time and furthest wave; your form over the last ten runs; how your runs on each rotation have gone; where your runs end and where they hurt, in stretches of seven waves; and every run's splits against your best cape, with the time your best waves add up to.
+
 <p align="center">
-  <img src="docs/screenshots/hurt.png" width="225" alt="Where it hurts">
-  <img src="docs/screenshots/supply.png" width="225" alt="Supply check at the cave mouth">
   <img src="docs/screenshots/scroll.png" width="225" alt="A run kept as a scroll">
-</p>
-<p align="center">
-  <img src="docs/screenshots/plaque.png" alt="Plaque">
+  <img src="docs/screenshots/hurt.png" width="225" alt="Where it hurts">
 </p>
 
-## How it reads the cave
+## Settings that matter
 
-The cave's five spawn points (north-west, centre, south-west, south and south-east) start on their known tiles, so the very first wave is placed exactly. Each wave read cleanly against a known rotation nudges its spawn points to the tiles creatures really used, and records which creature stood where, so a spawn the game ever moves by a tile or two still lines up. A rotation is never ruled out for good: one misread spawn cannot leave it without an answer, and the panel says when a wave disagreed.
+Settings come in three groups. Every option is on by default.
 
-Spawn tiles are also learned per size of creature, since a mager's five-tile body may not sit on the same corner tile as a bat's at the same spawn point.
+- **Where to stand:** *Mark where to stand* (the gilt tile), *Follow the fight* (re-work the tile from where creatures really are), *Show the next wave* and *Rehearse the next wave*.
+- **During a wave:** *Tag stuck creatures*, *Kill order*, *Prayer to use*, *Eat warning* and *Pilot plaque*. None of these shows on the Jad wave.
+- **Planning and chat:** *Doses kept for Jad* (how many prayer doses pacing holds back for him, 4 by default), *Road to Jad* and *Notes in chat* (rotation known, prayer behind pace, why a run ended).
 
-A single odd tick never ends a run: you only count as having left the cave after two ticks outside in a row, a tick on which your own tile cannot be read yet (just after logging in) says nothing, and a run left open is only closed after a few ticks seen outside. A run the pilot did not see from wave 1 (turned on part way, or carried over from another computer) is still followed and filed, but its time is not counted as a record and its earlier waves are left untimed, so splits always line up with their waves. Logging back in mid-run restarts that wave's clock, as the game restarts the wave. A wave call or the first spawns that arrive on the very tick you are moved in, before your new tile can be read, are held for a few ticks and played once you are seen inside, so wave 1 is never lost to the order the game sends things in. Closing the client saves the logbook first. Killing Jad moves you out of the cave, so the pilot waits a few ticks for the kill count before calling it a walk-out.
+## Works with other Codex plugins
 
-The wave ladder (which creatures each wave holds) is worked out from the cave's own rule rather than typed in. The rotation table lists the spawn points for every wave of every rotation as players number them.
+- **[Codex Bank Steward](https://github.com/Nubles/OSRS-Codex-Bank-Steward):** reads its shared bank snapshot (`bankV1`) to count your prayer doses before you have opened the bank with the pilot on. Read only, never written. Without Bank Steward the pilot counts the bank itself the next time you open it.
+
+Nothing else is needed: every feature works with only this plugin installed.
+
+## Your data
+
+Your runs, prayer rate, learned spawn tiles and road ratings are saved in your RuneLite profile, per account, and stay on your computer. The pilot keeps your last 60 runs and always your best cape. A damaged or hand-edited save is mended when it is read: anything that cannot be read is left out a field or a run at a time, so the rest of your records survive.
 
 ## Rules posture
 
-Codex Fight Caves Pilot only reads what the game already shows you: where creatures appear, the cave's collision map, your prayer and your inventory. It does not click, change menus, or send anything over the network.
+Codex Fight Caves Pilot only reads what the game already shows you: where creatures appear, the cave's collision map, your prayer, your equipment and your inventory. It does not click, change menus, or send anything over the network.
 
-It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper because it took the challenge out of the fight, so on wave 63 the pilot steps back entirely: no plaque, no tile, no prayer to use, no prayer pacing, no eat warning, no kill order, no stuck tags, no splits and no chat lines. Every page of the panel, the wave charts included, shows one card saying it has stepped back, and a fall to Jad gets no review. Everything it does offer, from wave spawn charts to safespot tiles, is the same kind of help the community's rotation guides and RuneLite's own Inferno plugin give.
+It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper because it took the challenge out of the fight, so on wave 63 the pilot steps back entirely: no plaque, no tile, no prayer to use, no prayer pacing, no eat warning, no kill order, no stuck tags, no splits and no chat lines, and no outline or rehearsal of his wave as wave 62 ends. Every page of the panel shows one card saying it has stepped back. Everything it does offer, from wave charts to safespot tiles, is the kind of help the community's rotation guides and RuneLite's own Inferno plugin give.
+
+## How it reads the cave
+
+The cave's five spawn points start on their known tiles, so the first wave is placed exactly. Each wave read cleanly nudges its spawn points to the tiles creatures really used, per size of creature, so a spawn the game moves by a tile still lines up. A rotation is never ruled out for good, so one misread spawn cannot leave it without an answer.
+
+A single odd tick never ends a run: you only count as having left after two ticks outside in a row. A run the pilot did not see from wave 1 is still followed and filed, but its time is not a record. Logging back in mid-run restarts that wave's clock, as the game does. Closing the client saves the logbook first.
 
 ## Development
 
@@ -81,7 +93,7 @@ It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper becau
 ./gradlew run     # launch RuneLite with the plugin loaded
 ```
 
-The rotation tracker, wave ladder, collision and line of sight rules, stand planner, wave rehearsal, road to Jad, damage log, tile comparison, splits, kill order, prayer call, weapon reach and prayer pacer (`core/`) are plain Java with unit tests; the panel and overlays are in `ui/` and `overlay/`. The step and line of sight rules are ported from RuneLite's `WorldArea`.
+The rotation tracker, wave ladder, collision and line of sight rules, stand planner, rehearsal, road to Jad, splits, kill order, prayer call, weapon reach and prayer pacer (`core/`) are plain Java with unit tests; the panel and overlays are in `ui/` and `overlay/`. The step and line of sight rules are ported from RuneLite's `WorldArea`.
 
 ## Licence
 
