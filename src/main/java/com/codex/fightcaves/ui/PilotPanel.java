@@ -256,10 +256,10 @@ public class PilotPanel extends PluginPanel
 		quiet(records);
 	}
 
-	/** The crest on Jad's wave: the wave alone, not even the rotation. */
 	/** The crest's word beside 63 on the last wave. */
 	static final String LAST_WAVE = "final wave";
 
+	/** The crest on Jad's wave: the wave alone, not even the rotation. */
 	private void stepBackCrest()
 	{
 		// "63 / 63" would say the same figure twice: the last wave is named instead.
