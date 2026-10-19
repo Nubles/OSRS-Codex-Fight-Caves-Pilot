@@ -244,11 +244,12 @@ public class LogbookFuzzTest
 		big.furthest = Waves.LAST;
 		String json = GSON.toJson(big);
 
+		// A save this big takes tens of milliseconds to read, so the plugin reads it off the client
+		// thread; then only the runs kept are carried, and the best cape among them.
+		assertTrue(json.length() >= Logbook.LARGE);
 		long t0 = System.nanoTime();
 		Logbook b = Logbook.read(GSON, json);
 		long loadMs = (System.nanoTime() - t0) / 1_000_000;
-		// Read once, at login (about 130 ms here, the one slow step, and only for a save the pilot
-		// never writes); then only the runs kept are carried, and the best cape among them.
 		assertTrue(b.runs.size() <= Logbook.KEEP_RUNS + 1);
 		assertEquals(99_999, b.attempts);
 		assertTrue("load took " + loadMs + " ms", loadMs < 1500);
@@ -259,16 +260,21 @@ public class LogbookFuzzTest
 		{
 			Logbook.read(GSON, GSON.toJson(b));
 		}
-		int goes = 200;
-		long t1 = System.nanoTime();
-		for (int i = 0; i < goes; i++)
+		// The quickest of five batches, so a busy machine (a shared CI runner) cannot fail it.
+		int goes = 40;
+		double eachMs = Double.MAX_VALUE;
+		for (int batch = 0; batch < 5; batch++)
 		{
-			Logbook copy = Logbook.read(GSON, GSON.toJson(b));
-			Splits.forecast(copy.runs, 1, 0, 0);
-			Splits.recent(copy.runs, copy.active.splits, 3);
-			Splits.versusPb(copy.runs, copy.active.wave - 1, copy.active.waveStartTick, false);
+			long t1 = System.nanoTime();
+			for (int i = 0; i < goes; i++)
+			{
+				Logbook copy = Logbook.read(GSON, GSON.toJson(b));
+				Splits.forecast(copy.runs, 1, 0, 0);
+				Splits.recent(copy.runs, copy.active.splits, 3);
+				Splits.versusPb(copy.runs, copy.active.wave - 1, copy.active.waveStartTick, false);
+			}
+			eachMs = Math.min(eachMs, (System.nanoTime() - t1) / 1e6 / goes);
 		}
-		double eachMs = (System.nanoTime() - t1) / 1e6 / goes;
 		assertTrue("each view took " + eachMs + " ms", eachMs < 5);
 
 		javax.swing.SwingUtilities.invokeAndWait(() ->
@@ -277,5 +283,81 @@ public class LogbookFuzzTest
 			survive(GSON.toJson(b), panel);
 			assertFalse(panel.steppedBack(0));
 		});
+	}
+	@Test
+	public void aNewerVersionsSaveIsKeptAsideBeforeItIsOverwritten()
+	{
+		// A newer version adds a field, a field to each run and a way of ending a run. This one
+		// reads the rest, but its next save writes back only what it knows: the new field and the
+		// run's own are gone and "ZUK" is filed as walking out. The plugin keeps the save as found
+		// aside (logbookBackup) first, whenever wouldLose says so.
+		JsonObject root = GSON.toJsonTree(full()).getAsJsonObject();
+		root.addProperty("streak", 4);
+		JsonObject run = root.getAsJsonArray("runs").get(1).getAsJsonObject();
+		run.addProperty("result", "ZUK");
+		run.addProperty("seed", 7);
+		String newer = GSON.toJson(root);
+		Logbook b = Logbook.read(GSON, newer);
+		String saved = GSON.toJson(b);
+		assertFalse(saved.contains("streak"));
+		assertFalse(saved.contains("ZUK"));
+		assertFalse(saved.contains("seed"));
+		assertTrue(Logbook.wouldLose(GSON, newer, b));
+		assertEquals(12, b.runs.size());
+	}
+
+	@Test
+	public void ownAndOlderSavesAreNotPutAside()
+	{
+		// What the pilot writes reads back whole, and so does an older save that lacks newer fields:
+		// neither is copied aside at each login.
+		String own = GSON.toJson(full());
+		assertFalse(Logbook.wouldLose(GSON, own, Logbook.read(GSON, own)));
+		JsonObject old = GSON.toJsonTree(full()).getAsJsonObject();
+		old.remove("outlooks");
+		old.remove("bankDoses");
+		old.remove("bankSeenAt");
+		for (JsonElement r : old.getAsJsonArray("runs"))
+		{
+			r.getAsJsonObject().remove("hurt");
+			r.getAsJsonObject().remove("fall");
+		}
+		String older = GSON.toJson(old);
+		assertFalse(Logbook.wouldLose(GSON, older, Logbook.read(GSON, older)));
+		assertFalse(Logbook.wouldLose(GSON, null, new Logbook()));
+		assertFalse(Logbook.wouldLose(GSON, "", new Logbook()));
+		// A plugin-written logbook full to its 60 runs is read on the client thread, quickly.
+		Logbook sixty = full();
+		while (sixty.runs.size() < Logbook.KEEP_RUNS)
+		{
+			sixty.runs.add(sixty.runs.get(1));
+		}
+		String json = GSON.toJson(sixty);
+		assertTrue(json.length() + " characters", json.length() < Logbook.LARGE / 4);
+		double ms = Double.MAX_VALUE;
+		for (int batch = 0; batch < 5; batch++)
+		{
+			long t = System.nanoTime();
+			for (int i = 0; i < 20; i++)
+			{
+				Logbook read = Logbook.read(GSON, json);
+				Logbook.wouldLose(GSON, json, read);
+			}
+			ms = Math.min(ms, (System.nanoTime() - t) / 1e6 / 20);
+		}
+		assertTrue(ms + " ms", ms < 5);
+	}
+
+	@Test
+	public void aDamagedSaveIsPutAside()
+	{
+		// Every damaged field that had to be mended or left out would be lost by the next save.
+		for (String[] path : paths(GSON.toJsonTree(full()).getAsJsonObject()))
+		{
+			String json = damaged(path, "{\"a\":1}");
+			assertTrue(String.join(".", path), Logbook.wouldLose(GSON, json, Logbook.read(GSON, json)));
+		}
+		assertTrue(Logbook.wouldLose(GSON, "{\"runs\":[", Logbook.read(GSON, "{\"runs\":[")));
+		assertTrue(Logbook.wouldLose(GSON, "garbage", Logbook.read(GSON, "garbage")));
 	}
 }

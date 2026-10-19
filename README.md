@@ -72,7 +72,7 @@ Nothing else is needed: every feature works with only this plugin installed.
 
 ## Your data
 
-Your runs, prayer rate, learned spawn tiles and road ratings are saved in your RuneLite profile, per account, and stay on your computer. The pilot keeps your last 60 runs and always your best cape. A damaged or hand-edited save is mended when it is read: anything that cannot be read is left out a field or a run at a time, so the rest of your records survive.
+Your runs, prayer rate, learned spawn tiles and road ratings are saved in your RuneLite profile, per account, like any other RuneLite setting. The pilot keeps your last 60 runs and always your best cape. A damaged or hand-edited save is mended when it is read: anything that cannot be read is left out a field or a run at a time, so the rest of your records survive. When a save holds anything this version cannot keep (it was damaged, or written by a newer version of the pilot), a copy of it as found is put aside under `logbookBackup` before it is first written over.
 
 ## Rules posture
 

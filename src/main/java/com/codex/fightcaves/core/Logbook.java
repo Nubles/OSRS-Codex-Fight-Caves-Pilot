@@ -18,6 +18,11 @@ import java.util.Map;
 public final class Logbook
 {
 	public static final int KEEP_RUNS = 60;
+	/**
+	 * A save at least this long is far bigger than any the pilot writes (60 runs come to about
+	 * 30,000 characters) and takes long enough to read that it is read off the client thread.
+	 */
+	public static final int LARGE = 200_000;
 
 	/** How a run ended. */
 	public enum Result
@@ -131,6 +136,75 @@ public final class Logbook
 		salvage(gson, root, null);
 		Logbook kept = parse(gson, root);
 		return kept == null ? new Logbook() : kept;
+	}
+
+	/**
+	 * True when saving {@code book}, read from {@code json}, in place of {@code json} would lose
+	 * something it holds: a field or a value this version does not know (one a newer version wrote,
+	 * such as a way of ending a run it has never heard of), or one it had to mend or leave out. A
+	 * field {@code json} lacks, as an older save does, loses nothing.
+	 */
+	public static boolean wouldLose(Gson gson, String json, Logbook book)
+	{
+		if (json == null || json.trim().isEmpty())
+		{
+			return false;
+		}
+		JsonElement was;
+		try
+		{
+			was = gson.fromJson(json, JsonElement.class);
+		}
+		catch (RuntimeException e)
+		{
+			return true;
+		}
+		return was != null && !covers(was, gson.toJsonTree(book));
+	}
+
+	/** True when {@code now} holds everything {@code was} does: every field, list entry and value. */
+	private static boolean covers(JsonElement was, JsonElement now)
+	{
+		if (was.isJsonNull())
+		{
+			// Gson leaves an empty field out, and a gap in a list reads as 0.
+			return true;
+		}
+		if (was.isJsonObject())
+		{
+			if (!now.isJsonObject())
+			{
+				return false;
+			}
+			JsonObject have = now.getAsJsonObject();
+			for (Map.Entry<String, JsonElement> e : was.getAsJsonObject().entrySet())
+			{
+				JsonElement kept = have.get(e.getKey());
+				if (!e.getValue().isJsonNull() && (kept == null || !covers(e.getValue(), kept)))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		if (was.isJsonArray())
+		{
+			JsonArray a = was.getAsJsonArray();
+			if (!now.isJsonArray() || now.getAsJsonArray().size() != a.size())
+			{
+				return false;
+			}
+			JsonArray b = now.getAsJsonArray();
+			for (int i = 0; i < a.size(); i++)
+			{
+				if (!covers(a.get(i), b.get(i)))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		return was.equals(now);
 	}
 
 	/** The logbook in {@code json} (a string or a tree), repaired, or null when it does not read. */

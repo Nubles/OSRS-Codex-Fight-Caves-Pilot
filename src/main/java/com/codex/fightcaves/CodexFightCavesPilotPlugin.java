@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -92,13 +93,17 @@ import org.slf4j.LoggerFactory;
 @PluginDescriptor(
 	name = "Codex Fight Caves Pilot",
 	description = "Reads your Fight Cave rotation from the first spawns, marks where to stand for each wave and paces your prayer potions against the waves left",
-	tags = {"fight caves", "fight cave", "tzhaar", "jad", "fire cape", "rotation", "waves", "safespot", "prayer", "codex"}
+	tags = {"fight caves", "fight cave", "tzhaar", "fire cape", "rotation", "waves", "safespot", "prayer", "splits", "codex"}
 )
 public class CodexFightCavesPilotPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexFightCavesPilotPlugin.class);
 	static final int FIGHT_CAVE_REGION = 9551;
 	private static final String LOGBOOK_KEY = "logbook";
+	/** Where a save this version could not keep whole is put aside, once, before it is overwritten. */
+	private static final String BACKUP_KEY = "logbookBackup";
+	/** Past this a save is far bigger than any the pilot writes, and is not copied aside. */
+	private static final int BACKUP_MAX = 1_000_000;
 	private static final Pattern WAVE = Pattern.compile("Wave: (\\d+)");
 	private static final Pattern KILL_COUNT = Pattern.compile("Your TzTok-Jad kill count is");
 	private static final Pattern TAGS = Pattern.compile("<[^>]*>");
@@ -135,6 +140,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private ChatMessageManager chatMessageManager;
 
 	@Inject
+	private ScheduledExecutorService executor;
+
+	@Inject
 	private Gson gson;
 
 	@Inject
@@ -168,6 +176,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private Logbook book;
 	private PrayerPacer pacer = new PrayerPacer();
 	private boolean unsaved;
+	/** Counts logbook loads, so a slow read that an account switch or shutdown overtook is dropped. */
+	private int loadGeneration;
 
 	private boolean inCave;
 	private Grid grid;
@@ -283,6 +293,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			save();
+			// A logbook still being read off the client thread must not come back after this.
+			loadGeneration++;
 			book = null;
 			profile = null;
 			resetCave();
@@ -358,7 +370,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	public void onConfigChanged(ConfigChanged event)
 	{
 		// The logbook itself is saved under the same group; its own saves need no redraw.
-		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()) && !LOGBOOK_KEY.equals(event.getKey());
+		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup())
+			&& !LOGBOOK_KEY.equals(event.getKey()) && !BACKUP_KEY.equals(event.getKey());
 		boolean steward = Banked.STEWARD_GROUP.equals(event.getGroup()) && Banked.STEWARD_KEY.equals(event.getKey());
 		if (ours || steward)
 		{
@@ -819,6 +832,20 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		liveSpot = null;
 		waveNpcs.clear();
 		unsaved = true;
+		if (wave >= Waves.JAD)
+		{
+			// Jad's wave is called between ticks: wave 62's tile, seals, prayer call and plaque
+			// would otherwise stay up until the next tick's plan. Take them all down now.
+			nextSpot = null;
+			nextSpotWave = 0;
+			clearRehearsal();
+			compare = null;
+			danger = 0;
+			call = null;
+			order = java.util.Collections.emptyList();
+			caveOverlay.show(Marks.NONE);
+			publish(true);
+		}
 	}
 
 	/** True once every creature of the wave has appeared, or the grace period is over. */
@@ -1471,11 +1498,66 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		profile = configManager.getRSProfileKey();
 		book = null;
+		int generation = ++loadGeneration;
 		if (profile == null)
 		{
 			return;
 		}
-		book = Logbook.read(gson, configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY));
+		String saved = configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY);
+		if (saved == null || saved.length() < Logbook.LARGE)
+		{
+			Logbook read = Logbook.read(gson, saved);
+			loaded(profile, saved, read, Logbook.wouldLose(gson, saved, read));
+			return;
+		}
+		// Far bigger than any save the pilot writes (hand-edited, or from a build that kept every
+		// run): reading it takes tens of milliseconds, so it is read off the client thread and taken
+		// up on it. Until then the pilot shows and records nothing, as when logged out.
+		String forProfile = profile;
+		executor.execute(() ->
+		{
+			Logbook got;
+			boolean loses;
+			try
+			{
+				got = Logbook.read(gson, saved);
+				loses = Logbook.wouldLose(gson, saved, got);
+			}
+			catch (RuntimeException e)
+			{
+				// Never left without a logbook: start afresh, with the save as found put aside.
+				log.warn("Could not read the saved logbook", e);
+				got = new Logbook();
+				loses = true;
+			}
+			Logbook read = got;
+			boolean lose = loses;
+			clientThread.invokeLater(() ->
+			{
+				// Not if the account changed, or the plugin was turned off, while it was being read.
+				if (generation == loadGeneration && forProfile.equals(profile))
+				{
+					loaded(forProfile, saved, read, lose);
+					publish(true);
+				}
+			});
+		});
+	}
+
+	/**
+	 * Takes up the logbook read from {@code saved}, first putting {@code saved} aside when saving
+	 * over it would lose something ({@code lose}, from {@link Logbook#wouldLose}).
+	 */
+	private void loaded(String forProfile, String saved, Logbook read, boolean lose)
+	{
+		if (lose && saved.length() <= BACKUP_MAX)
+		{
+			// A newer version's fields, a run ending this version does not know, or a damaged
+			// figure: the next save would overwrite them, so the save as found is kept aside.
+			log.warn("The saved logbook holds what this version cannot keep; a copy is kept under {}", BACKUP_KEY);
+			configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, forProfile, BACKUP_KEY, saved);
+		}
+		book = read;
 		pacer = new PrayerPacer(book.prayerSpent, book.prayerHitpoints);
 		unsaved = false;
 		lastViewKey = null;
