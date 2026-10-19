@@ -59,6 +59,28 @@ public enum Spawn
 		return CaveMap.fy(tileY + 1);
 	}
 
+	/** True when every code in a saved list names a spawn point, so none would throw on reading. */
+	public static boolean areCodes(java.util.List<String> codes)
+	{
+		if (codes == null)
+		{
+			return false;
+		}
+		for (String code : codes)
+		{
+			boolean known = false;
+			for (Spawn s : values())
+			{
+				known |= s.code.equals(code);
+			}
+			if (!known)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	public static Spawn ofCode(String code)
 	{
 		for (Spawn s : values())

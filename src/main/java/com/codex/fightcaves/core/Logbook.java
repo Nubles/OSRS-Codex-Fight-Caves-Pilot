@@ -151,20 +151,17 @@ public final class Logbook
 			prayerSpent = PrayerPacer.PRIOR_RATE * PrayerPacer.PRIOR_WEIGHT;
 			prayerHitpoints = PrayerPacer.PRIOR_WEIGHT;
 		}
+		// A spawn code that does not decode would throw each time it is read back.
+		corrections.values().removeIf(codes -> !Spawn.areCodes(codes));
 		if (active != null)
 		{
-			if (active.splits == null)
-			{
-				active.splits = new ArrayList<>();
-			}
+			active.splits = filled(active.splits);
+			active.hurt = filled(active.hurt);
 			if (active.seen == null)
 			{
 				active.seen = new HashMap<>();
 			}
-			if (active.hurt == null)
-			{
-				active.hurt = new ArrayList<>();
-			}
+			active.seen.values().removeIf(codes -> !Spawn.areCodes(codes));
 		}
 		return this;
 	}

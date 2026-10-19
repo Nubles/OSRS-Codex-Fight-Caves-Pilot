@@ -173,8 +173,8 @@ public final class Fall
 			for (Threat t : f.threats)
 			{
 				styles.add(t.getStyle());
-				here.merge(t.getStyle(), t.getMonster().getMaxHit(), Integer::sum);
-				weight.merge(t.getStyle(), t.getMonster().getMaxHit(), Integer::sum);
+				here.merge(t.getStyle(), t.getMaxHit(), Integer::sum);
+				weight.merge(t.getStyle(), t.getMaxHit(), Integer::sum);
 				who.computeIfAbsent(t.getStyle(), k -> new LinkedHashSet<>()).add(noun(t.getMonster()));
 			}
 			if (styles.size() >= 2)

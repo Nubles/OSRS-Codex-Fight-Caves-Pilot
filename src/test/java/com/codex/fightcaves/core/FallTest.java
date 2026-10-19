@@ -1,6 +1,7 @@
 package com.codex.fightcaves.core;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -107,8 +108,35 @@ public class FallTest
 	{
 		List<Threat> t = threats(Monster.KET_ZEK, Protect.MAGIC, Monster.TOK_XIL, Protect.MISSILES);
 		assertEquals(0, Threat.danger(t, Protect.MAGIC, 20));
-		assertEquals(13, Threat.danger(t, Protect.MAGIC, 13));
-		assertEquals(67, Threat.danger(t, null, 60));
+		assertEquals(14, Threat.danger(t, Protect.MAGIC, 13));
+		assertEquals(66, Threat.danger(t, null, 60));
 		assertEquals(0, Threat.danger(t, null, 0));
+	}
+
+	@Test
+	public void maxHitsFollowTheStyleThatLands()
+	{
+		// The wiki's max hits: a mager hits 52 with magic but 55 beside you, a ranger 14 with
+		// arrows but 13 in melee.
+		assertEquals(52, new Threat(Monster.KET_ZEK, Protect.MAGIC).getMaxHit());
+		assertEquals(55, new Threat(Monster.KET_ZEK, Protect.MELEE).getMaxHit());
+		assertEquals(14, new Threat(Monster.TOK_XIL, Protect.MISSILES).getMaxHit());
+		assertEquals(13, new Threat(Monster.TOK_XIL, Protect.MELEE).getMaxHit());
+		assertEquals(25, new Threat(Monster.YT_MEJKOT, Protect.MELEE).getMaxHit());
+		assertEquals(7, new Threat(Monster.TZ_KEK, Protect.MELEE).getMaxHit());
+		assertEquals(4, new Threat(Monster.TZ_KIH, Protect.MELEE).getMaxHit());
+		assertEquals(55, Monster.KET_ZEK.getMaxHit());
+		assertEquals(14, Monster.TOK_XIL.getMaxHit());
+		// A mager beside you at 54 hitpoints can finish you even with Magic up.
+		assertEquals(55, Threat.danger(threats(Monster.KET_ZEK, Protect.MELEE), Protect.MAGIC, 54));
+	}
+
+	@Test
+	public void jadAndHisHealersMarkTheJadWave()
+	{
+		assertTrue(Monster.isJadFight("TzTok-Jad"));
+		assertTrue(Monster.isJadFight("Yt-HurKot"));
+		assertFalse(Monster.isJadFight("Ket-Zek"));
+		assertFalse(Monster.isJadFight(null));
 	}
 }

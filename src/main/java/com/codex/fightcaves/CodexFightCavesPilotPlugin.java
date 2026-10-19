@@ -468,6 +468,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				died = true;
 			}
 			lastHp = hp;
+			if (book.active != null && book.active.wave < Waves.JAD && jadOnFloor())
+			{
+				// Jad or a healer is out but the wave call was missed (a run picked up part way, or
+				// one carried on elsewhere): it is the Jad wave, and nothing may be offered on it.
+				Logbook.advance(book.active, Waves.JAD);
+				waveSpent = 0;
+				unsaved = true;
+			}
 			if (pendingWave > 0 && readyToRead())
 			{
 				readWave();
@@ -1090,7 +1098,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		List<Threat> threats = jad ? java.util.Collections.emptyList() : Threat.of(grid, foes, px, py);
 		Protect up = activeProtect();
 		int hp = client.getBoostedSkillLevel(Skill.HITPOINTS);
-		if (!jad)
+		if (jad)
+		{
+			// The last of wave 62 says nothing about a fall to Jad, which is never reviewed.
+			fall.clear();
+		}
+		else
 		{
 			fall.add(new Fall.Frame(hp, client.getBoostedSkillLevel(Skill.PRAYER), up, threats, tickDamage));
 		}
@@ -1254,6 +1267,24 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		weaponRange = rangeCache.computeIfAbsent(weapon.getId(), id -> WeaponRange.of(itemManager.getItemComposition(id).getName()));
 	}
 
+	/** True when TzTok-Jad or one of his healers is in the scene. */
+	private boolean jadOnFloor()
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv == null)
+		{
+			return false;
+		}
+		for (NPC npc : wv.npcs())
+		{
+			if (npc != null && Monster.isJadFight(npc.getName()))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private List<NPC> aliveFoes()
 	{
 		List<NPC> list = new ArrayList<>();
@@ -1386,7 +1417,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		PrayerPacer.Pace pace = wave > 0 ? pacer.pace(wave, prayer, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
 		if (pace != null && config.chat())
 		{
-			if (pace.getState() == PrayerPacer.State.SHORT && !warnedShort && wave > 6)
+			if (pace.getState() == PrayerPacer.State.SHORT && !warnedShort && wave > 6 && wave < Waves.JAD)
 			{
 				warnedShort = true;
 				chat("prayer is behind pace: about " + Math.max(1, (int) Math.ceil(-pace.getSpare())) + " doses short for the waves left at your rate.");

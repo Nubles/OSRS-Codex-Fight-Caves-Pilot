@@ -29,6 +29,12 @@ public final class Threat
 		return monster;
 	}
 
+	/** Its biggest hit with the style it will hit you with from where it stands. */
+	public int getMaxHit()
+	{
+		return monster.maxHitWith(style == Protect.MELEE ? Monster.Style.MELEE : monster.getStyle());
+	}
+
 	/** The prayer that blocks it from where it will hit you. */
 	public Protect getStyle()
 	{
@@ -67,7 +73,7 @@ public final class Threat
 		{
 			if (t.style != up)
 			{
-				sum += t.monster.getMaxHit();
+				sum += t.getMaxHit();
 			}
 		}
 		return sum;

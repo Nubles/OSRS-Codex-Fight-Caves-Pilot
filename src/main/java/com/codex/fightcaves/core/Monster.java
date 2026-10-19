@@ -8,9 +8,9 @@ public enum Monster
 {
 	TZ_KIH("Tz-Kih", "Bat", 22, 1, 10, Style.MELEE, 1, 1, 4),
 	TZ_KEK("Tz-Kek", "Blob", 45, 2, 20, Style.MELEE, 1, 2, 7),
-	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 10, 4, 13),
+	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 10, 4, 14, 13),
 	YT_MEJKOT("Yt-MejKot", "Melee", 180, 4, 80, Style.MELEE, 1, 5, 25),
-	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 10, 9, 54),
+	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 10, 9, 52, 55),
 	TZTOK_JAD("TzTok-Jad", "Jad", 702, 5, 250, Style.MIXED, 10, 12, 97);
 
 	/** How a creature fights. */
@@ -31,10 +31,21 @@ public enum Monster
 	private final int range;
 	private final int threat;
 	private final int maxHit;
+	private final int meleeMaxHit;
 
 	Monster(String name, String nickname, int level, int size, int hitpoints, Style style, int range, int threat, int maxHit)
 	{
+		this(name, nickname, level, size, hitpoints, style, range, threat, maxHit, maxHit);
+	}
+
+	/**
+	 * @param maxHit its biggest hit with its own style
+	 * @param meleeMaxHit its biggest hit in melee, for a ranger or mager beside you
+	 */
+	Monster(String name, String nickname, int level, int size, int hitpoints, Style style, int range, int threat, int maxHit, int meleeMaxHit)
+	{
 		this.maxHit = maxHit;
+		this.meleeMaxHit = meleeMaxHit;
 		this.name = name;
 		this.nickname = nickname;
 		this.level = level;
@@ -89,10 +100,16 @@ public enum Monster
 		return threat;
 	}
 
-	/** Its biggest hit, with any of its attacks. */
+	/** Its biggest hit, with any of its attacks (the wiki's figures). */
 	public int getMaxHit()
 	{
-		return maxHit;
+		return Math.max(maxHit, meleeMaxHit);
+	}
+
+	/** Its biggest hit with one style: a ranger or mager beside you hits with melee, and not as hard. */
+	public int maxHitWith(Style s)
+	{
+		return s == Style.MELEE ? meleeMaxHit : maxHit;
 	}
 
 	/**
@@ -108,6 +125,15 @@ public enum Monster
 	public boolean isRanged()
 	{
 		return range > 1;
+	}
+
+	/**
+	 * True for TzTok-Jad and his healers, at any level: when one is on the floor the Jad wave is
+	 * on, whatever wave the logbook last heard called.
+	 */
+	public static boolean isJadFight(String name)
+	{
+		return name != null && (name.equalsIgnoreCase(TZTOK_JAD.name) || name.equalsIgnoreCase("Yt-HurKot"));
 	}
 
 	/**

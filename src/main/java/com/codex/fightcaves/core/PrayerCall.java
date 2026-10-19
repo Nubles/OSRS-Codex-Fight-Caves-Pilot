@@ -66,7 +66,7 @@ public final class PrayerCall
 		Map<Protect, List<Monster>> who = new EnumMap<>(Protect.class);
 		for (Threat t : threats)
 		{
-			damage.merge(t.getStyle(), t.getMonster().getMaxHit(), Integer::sum);
+			damage.merge(t.getStyle(), t.getMaxHit(), Integer::sum);
 			who.computeIfAbsent(t.getStyle(), k -> new ArrayList<>()).add(t.getMonster());
 		}
 		Protect best = null;

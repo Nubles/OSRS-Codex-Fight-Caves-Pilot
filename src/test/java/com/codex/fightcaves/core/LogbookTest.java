@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import org.junit.Test;
 
 /** Runs picked up part way, missed wave calls, logging back in, and the damage each wave took. */
@@ -162,5 +163,36 @@ public class LogbookTest
 		assertNull(book.runs.get(0).fallHp);
 		// Wave 1 was never timed in these runs, so there is no usual time to forecast from.
 		assertNull(Splits.forecast(book.runs, 1, 0, 0));
+	}
+
+	@Test
+	public void aDamagedRunInProgressAndCorrectionsStillRead()
+	{
+		Logbook book = new Logbook();
+		book.active = new Logbook.Active();
+		book.active.splits = new java.util.ArrayList<>(Arrays.asList(null, 40));
+		book.active.hurt = new java.util.ArrayList<>(Arrays.asList(null, 2));
+		book.active.seen = new java.util.HashMap<>();
+		book.active.seen.put(3, null);
+		book.active.seen.put(4, new java.util.ArrayList<>(Arrays.asList("C", null)));
+		book.active.seen.put(5, new java.util.ArrayList<>(Arrays.asList("??")));
+		List<Placement> table = Rotations.placements(1, 1);
+		List<String> good = new java.util.ArrayList<>();
+		for (Placement p : table)
+		{
+			good.add(p.getSpawn().getCode());
+		}
+		book.corrections = new java.util.HashMap<>();
+		book.corrections.put("1:1", good);
+		book.corrections.put("1:2", new java.util.ArrayList<>(Arrays.asList("nowhere")));
+		book.corrections.put("1:3", null);
+		book.repair();
+		assertEquals(Arrays.asList(0, 40), book.active.splits);
+		assertEquals(Arrays.asList(0, 2), book.active.hurt);
+		// Replaying what a run had seen on entering the cave decodes every code kept.
+		assertTrue(book.active.seen.isEmpty());
+		assertEquals(1, book.corrections.size());
+		assertEquals(table.size(), book.placements(1, 1).size());
+		assertEquals(Rotations.placements(1, 2).size(), book.placements(1, 2).size());
 	}
 }
