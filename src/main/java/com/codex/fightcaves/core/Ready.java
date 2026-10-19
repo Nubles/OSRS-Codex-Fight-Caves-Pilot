@@ -128,7 +128,7 @@ public final class Ready
 		}
 		String n = weapon.toLowerCase(Locale.ROOT);
 		if (n.contains("crystal bow") || n.contains("faerdhinen") || n.contains("craw's") || n.contains("webweaver")
-			|| n.contains("blowpipe") || n.contains("chinchompa"))
+			|| n.contains("venator") || n.contains("blowpipe") || n.contains("chinchompa"))
 		{
 			return false;
 		}

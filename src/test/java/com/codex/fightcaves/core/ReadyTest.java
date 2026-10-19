@@ -47,6 +47,8 @@ public class ReadyTest
 		assertFalse(Ready.needsAmmo("Bow of faerdhinen (c)"));
 		assertFalse(Ready.needsAmmo("Crystal bow"));
 		assertFalse(Ready.needsAmmo("Craw's bow"));
+		// The venator bow fires on its own charges.
+		assertFalse(Ready.needsAmmo("Venator bow"));
 		assertFalse(Ready.needsAmmo("Rune scimitar"));
 		assertTrue(Ready.needsAmmo("Armadyl crossbow"));
 	}
