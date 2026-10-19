@@ -61,6 +61,10 @@ class RunScroll extends JPanel
 		Logbook.Run run = s.getRun();
 		if (run.result == Logbook.Result.CAPE)
 		{
+			if (s.getCapeNumber() < 0)
+			{
+				return "Fire cape";
+			}
 			return s.getCapeNumber() <= 1 ? "First fire cape" : ordinal(s.getCapeNumber()) + " fire cape";
 		}
 		return (run.result == Logbook.Result.DIED ? "Fell on wave " : "Left on wave ") + run.wave;
@@ -70,7 +74,7 @@ class RunScroll extends JPanel
 	{
 		int tens = n % 100;
 		String suffix = tens >= 11 && tens <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
-		return n + suffix;
+		return Format.count(n) + suffix;
 	}
 
 	/** What makes the run worth keeping, a short line each, most telling first. */
@@ -92,7 +96,7 @@ class RunScroll extends JPanel
 			{
 				out.add("A new best cape, level with the old one to the tick.");
 			}
-			else if (s.getVersusOldBest() == null && s.getCapeNumber() <= 1)
+			else if (s.getVersusOldBest() == null && s.getCapeNumber() == 1)
 			{
 				out.add("Your first fire cape. Every cape after races this one.");
 			}
@@ -111,7 +115,7 @@ class RunScroll extends JPanel
 		int best = s.getBestWaves();
 		if (best > 0)
 		{
-			out.add((best == 1 ? "1 wave" : best + " waves") + " at your fastest yet, in bright gold.");
+			out.add((best == 1 ? "1 wave" : best + " waves") + (s.isPartialRecord() ? " at your fastest on record" : " at your fastest yet") + ", in bright gold.");
 		}
 		int worst = 0;
 		for (int w = 1; w <= Waves.LAST; w++)
@@ -123,7 +127,7 @@ class RunScroll extends JPanel
 		}
 		if (worst > 0)
 		{
-			out.add("Hurt most on wave " + worst + ", " + s.hurt(worst) + " damage.");
+			out.add("Hurt most on wave " + worst + ", which took " + s.hurt(worst) + ".");
 		}
 		return out;
 	}
@@ -258,7 +262,7 @@ class RunScroll extends JPanel
 					String t = name + ": " + Format.ticks(story.ticks(wave));
 					if (story.best(wave) > 0)
 					{
-						t += tier == RunStory.Tier.BEST ? ", your fastest yet" : ", best before " + Format.ticks(story.best(wave));
+						t += tier == RunStory.Tier.BEST ? (story.isPartialRecord() ? ", your fastest on record" : ", your fastest yet") : ", best before " + Format.ticks(story.best(wave));
 					}
 					return t + (story.hurt(wave) > 0 ? ", " + story.hurt(wave) + " damage" : "");
 			}

@@ -42,18 +42,33 @@ public final class RunStory
 	private Integer versusOldBest;
 	private Integer versusLastCape;
 	private boolean furthestYet;
+	private boolean partialRecord;
 
 	private RunStory(Logbook.Run run)
 	{
 		this.run = run;
 	}
 
+	/** The story of one of a logbook's runs. */
+	public static RunStory of(Logbook book, Logbook.Run run)
+	{
+		return of(book.runs, run, book.capes, book.attempts, book.furthest);
+	}
+
+	/** {@link #of(Logbook, Logbook.Run)} for a logbook that has let no run go. */
+	public static RunStory of(List<Logbook.Run> runs, Logbook.Run run, int capes)
+	{
+		return of(runs, run, capes, runs.size(), 0);
+	}
+
 	/**
 	 * @param runs every run the logbook keeps, oldest first
 	 * @param run the run to tell, normally one of them
 	 * @param capes how many capes the logbook has counted in all, since old runs are let go
+	 * @param attempts how many runs it has counted in all
+	 * @param furthest the furthest wave any run has reached, kept or not
 	 */
-	public static RunStory of(List<Logbook.Run> runs, Logbook.Run run, int capes)
+	public static RunStory of(List<Logbook.Run> runs, Logbook.Run run, int capes, int attempts, int furthest)
 	{
 		RunStory s = new RunStory(run);
 		int at = runs.indexOf(run);
@@ -128,17 +143,31 @@ public final class RunStory
 			}
 		}
 
+		// Older runs than those kept were let go: "fastest yet" can then only mean of the runs on record.
+		boolean letGo = attempts > runs.size();
+		s.partialRecord = letGo;
 		if (caped)
 		{
 			// Old runs are let go, so count back from the logbook's total when the run is in it.
-			s.capeNumber = at >= 0 && capes > capesAfter ? capes - capesAfter : capesUpTo + 1;
+			// The first run kept may be your best cape, held on past the others, with a gap of
+			// let-go runs after it, so its number is not known.
+			if (at == 0 && letGo)
+			{
+				s.capeNumber = -1;
+			}
+			else
+			{
+				s.capeNumber = at >= 0 && capes > capesAfter ? capes - capesAfter : capesUpTo + 1;
+			}
 			if (!run.partial && run.ticks > 0)
 			{
 				s.versusOldBest = earlierBestCape > 0 ? run.ticks - earlierBestCape : null;
 				s.versusLastCape = lastCape != null ? run.ticks - lastCape.ticks : null;
 			}
 		}
-		s.furthestYet = !caped && earlierFurthest > 0 && run.wave > earlierFurthest;
+		// With runs let go, one of them may have gone further: then only a run that is still the
+		// furthest of all is said to be.
+		s.furthestYet = !caped && earlierFurthest > 0 && run.wave > earlierFurthest && (!letGo || run.wave >= furthest);
 		return s;
 	}
 
@@ -177,7 +206,13 @@ public final class RunStory
 		return bestWaves;
 	}
 
-	/** Which cape this was, counting from your first; 0 for a run that did not cape. */
+	/** True when older runs were let go, so "fastest yet" means of the runs on record. */
+	public boolean isPartialRecord()
+	{
+		return partialRecord;
+	}
+
+	/** Which cape this was, counting from your first; 0 for a run that did not cape, -1 when not known. */
 	public int getCapeNumber()
 	{
 		return capeNumber;

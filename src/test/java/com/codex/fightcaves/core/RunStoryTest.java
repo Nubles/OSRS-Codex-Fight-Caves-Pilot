@@ -85,6 +85,47 @@ public class RunStoryTest
 	}
 
 	@Test
+	public void runsLetGoLeaveTheHeldBestCapeUnnumberedAndClaimsModest()
+	{
+		// 80 runs counted, 3 kept: the best cape held at the front, then two after a gap.
+		Logbook book = new Logbook();
+		Logbook.Run held = run(Logbook.Result.CAPE, 63, 40, 1);
+		Logbook.Run fell = run(Logbook.Result.DIED, 40, 50, 50);
+		Logbook.Run cape = run(Logbook.Result.CAPE, 63, 45, 60);
+		book.runs.addAll(Arrays.asList(held, fell, cape));
+		book.attempts = 80;
+		book.capes = 9;
+		book.furthest = 63;
+		RunStory first = RunStory.of(book, held);
+		assertEquals(-1, first.getCapeNumber());
+		assertTrue(first.isPartialRecord());
+		assertEquals(9, RunStory.of(book, cape).getCapeNumber());
+		// A fall after a kept cape is never the furthest.
+		assertFalse(RunStory.of(book, fell).isFurthestYet());
+		book.attempts = 3;
+		book.capes = 2;
+		assertEquals(1, RunStory.of(book, held).getCapeNumber());
+		assertFalse(RunStory.of(book, held).isPartialRecord());
+	}
+
+	@Test
+	public void aFallIsFurthestOnlyIfNoLetGoRunWentFurther()
+	{
+		Logbook book = new Logbook();
+		Logbook.Run early = run(Logbook.Result.DIED, 20, 50, 1);
+		Logbook.Run later = run(Logbook.Result.DIED, 40, 50, 2);
+		book.runs.addAll(Arrays.asList(early, later));
+		book.attempts = 80;
+		book.furthest = 63;
+		assertFalse(RunStory.of(book, later).isFurthestYet());
+		book.furthest = 41;
+		assertTrue(RunStory.of(book, later).isFurthestYet());
+		book.attempts = 2;
+		book.furthest = 0;
+		assertTrue(RunStory.of(book, later).isFurthestYet());
+	}
+
+	@Test
 	public void aFallMarksItsWaveAndLeavesTheRestUnplayed()
 	{
 		Logbook.Run earlier = run(Logbook.Result.DIED, 30, 50, 1);

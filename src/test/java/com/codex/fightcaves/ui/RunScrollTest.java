@@ -40,9 +40,20 @@ public class RunScrollTest
 		assertEquals("13th", RunScroll.ordinal(13));
 		assertEquals("21st", RunScroll.ordinal(21));
 		assertEquals("112th", RunScroll.ordinal(112));
+		assertEquals("1,234th", RunScroll.ordinal(1234));
 		Logbook.Run cape = run(Logbook.Result.CAPE, 63, 50, 1);
 		assertEquals("First fire cape", RunScroll.title(RunStory.of(Collections.singletonList(cape), cape, 1)));
 		assertEquals("8th fire cape", RunScroll.title(RunStory.of(Collections.singletonList(cape), cape, 8)));
+		Logbook book = new Logbook();
+		book.runs.add(cape);
+		book.attempts = 70;
+		book.capes = 5;
+		RunStory unknown = RunStory.of(book, cape);
+		assertEquals("Fire cape", RunScroll.title(unknown));
+		assertFalse(RunScroll.lines(unknown).contains("Your first fire cape. Every cape after races this one."));
+		Logbook.Run quick = run(Logbook.Result.CAPE, 63, 45, 2);
+		book.runs.add(quick);
+		assertTrue(RunScroll.lines(RunStory.of(book, quick)).contains("63 waves at your fastest on record, in bright gold."));
 		Logbook.Run fell = run(Logbook.Result.DIED, 54, 50, 2);
 		assertEquals("Fell on wave 55", RunScroll.title(RunStory.of(Collections.singletonList(fell), fell, 0)));
 		Logbook.Run left = run(Logbook.Result.LEFT, 30, 50, 2);
@@ -60,7 +71,7 @@ public class RunScrollTest
 		best.hurt = new ArrayList<>(Collections.nCopies(63, 2));
 		best.hurt.set(45, 44);
 		assertEquals(Arrays.asList("A new best cape, 1:16 under the old one.", "63 waves at your fastest yet, in bright gold.",
-			"Hurt most on wave 46, 44 damage."), RunScroll.lines(RunStory.of(Arrays.asList(first, best), best, 2)));
+			"Hurt most on wave 46, which took 44."), RunScroll.lines(RunStory.of(Arrays.asList(first, best), best, 2)));
 
 		Logbook.Run slower = run(Logbook.Result.CAPE, 63, 52, 3);
 		assertEquals(Collections.singletonList("2:31 off your best cape, the one just before it."),

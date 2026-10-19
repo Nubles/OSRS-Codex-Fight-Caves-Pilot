@@ -71,7 +71,7 @@ The wave ladder (which creatures each wave holds) is worked out from the cave's 
 
 Codex Fight Caves Pilot only reads what the game already shows you: where creatures appear, the cave's collision map, your prayer and your inventory. It does not click, change menus, or send anything over the network.
 
-It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper because it took the challenge out of the fight, so on wave 63 the pilot steps back entirely: no plaque, no tile, no prayer to use, no prayer pacing, no eat warning, no kill order, no stuck tags, no splits and no chat lines. The panel shows one card saying it has stepped back, and a fall to Jad gets no review. Everything it does offer, from wave spawn charts to safespot tiles, is the same kind of help the community's rotation guides and RuneLite's own Inferno plugin give.
+It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper because it took the challenge out of the fight, so on wave 63 the pilot steps back entirely: no plaque, no tile, no prayer to use, no prayer pacing, no eat warning, no kill order, no stuck tags, no splits and no chat lines. Every page of the panel, the wave charts included, shows one card saying it has stepped back, and a fall to Jad gets no review. Everything it does offer, from wave spawn charts to safespot tiles, is the same kind of help the community's rotation guides and RuneLite's own Inferno plugin give.
 
 ## Development
 

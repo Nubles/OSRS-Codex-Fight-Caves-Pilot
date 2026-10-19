@@ -222,6 +222,19 @@ public class PilotPanel extends PluginPanel
 		return card;
 	}
 
+	/**
+	 * Jad's wave is yours alone: every page holds just this note until it ends, so there is
+	 * nothing on the panel to read or follow, not even a chart of where he stands.
+	 */
+	private static void quiet(JScrollPane page)
+	{
+		StackPanel stack = new StackPanel(8, 8);
+		Card card = note("TzTok-Jad", "The pilot shows nothing on this wave. Watch him, not the panel. Your run is filed the moment the wave ends.");
+		card.accent(Theme.BLOOD);
+		stack.add(card);
+		replace(page, stack);
+	}
+
 	private static void replace(JScrollPane scroll, JComponent stack)
 	{
 		scroll.setViewportView(stack);
@@ -249,11 +262,7 @@ public class PilotPanel extends PluginPanel
 
 		if (view.quiet())
 		{
-			// Jad's wave is yours alone: nothing on the panel to read or follow until it ends.
-			Card card = note("TzTok-Jad", "The pilot shows nothing on this wave. Watch him, not the panel. Your run is filed the moment the wave ends.");
-			card.accent(Theme.BLOOD);
-			stack.add(card);
-			replace(pilot, stack);
+			quiet(pilot);
 			return;
 		}
 
@@ -606,7 +615,7 @@ public class PilotPanel extends PluginPanel
 		{
 			stack.add(new SectionHeader("Last run", Format.day(b.runs.get(b.runs.size() - 1).endedAt)));
 			Logbook.Run last = b.runs.get(b.runs.size() - 1);
-			stack.add(new RunScroll(RunStory.of(b.runs, last, b.capes)));
+			stack.add(new RunScroll(RunStory.of(b, last)));
 			if (last.fall != null)
 			{
 				stack.add(fallCard(last));
@@ -734,6 +743,11 @@ public class PilotPanel extends PluginPanel
 
 	private void rebuildWaves()
 	{
+		if (view.quiet())
+		{
+			quiet(waves);
+			return;
+		}
 		StackPanel stack = new StackPanel(8, 8);
 		stack.add(new SectionHeader("Rotation", view.rotation > 0 ? "yours is " + view.rotation : null));
 		RotationPicker picker = new RotationPicker(r ->
@@ -798,6 +812,11 @@ public class PilotPanel extends PluginPanel
 
 	private void rebuildRecords()
 	{
+		if (view.quiet())
+		{
+			quiet(records);
+			return;
+		}
 		StackPanel stack = new StackPanel(8, 8);
 		Logbook b = view.book;
 		if (view.state == View.State.LOGGED_OUT)
@@ -819,7 +838,7 @@ public class PilotPanel extends PluginPanel
 			Logbook.Run run = comparedRun(b);
 			boolean latest = run == b.runs.get(b.runs.size() - 1);
 			stack.add(new SectionHeader("The run", latest ? "latest" : Format.day(run.endedAt)));
-			stack.add(new RunScroll(RunStory.of(b.runs, run, b.capes)));
+			stack.add(new RunScroll(RunStory.of(b, run)));
 			buildFall(stack, b);
 			buildSplits(stack, b);
 			buildHurt(stack, b);
