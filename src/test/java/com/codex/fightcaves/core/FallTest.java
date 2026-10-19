@@ -77,6 +77,22 @@ public class FallTest
 	}
 
 	@Test
+	public void theDeathAnimationIsNotReadAsFightingWithoutPrayer()
+	{
+		// Praying magic against the mager, worn down by it with the ranger stuck.
+		Fall f = fall(6, 60, 40, Protect.MAGIC, threats(Monster.KET_ZEK, Protect.MAGIC), 10);
+		f.add(new Fall.Frame(0, 40, Protect.MAGIC, threats(Monster.KET_ZEK, Protect.MAGIC), 12));
+		// Then six ticks of the death animation: prayers off, the mager and ranger still about.
+		for (int i = 0; i < 6; i++)
+		{
+			f.add(new Fall.Frame(0, 40, null, threats(Monster.KET_ZEK, Protect.MAGIC, Monster.TOK_XIL, Protect.MISSILES), 0));
+		}
+		Fall.Review r = f.review(5);
+		assertSame(Fall.Cause.WORN_DOWN, r.getCause());
+		assertEquals(7, r.getHp().size());
+	}
+
+	@Test
 	public void nothingKeptIsNoReview()
 	{
 		Fall f = new Fall();

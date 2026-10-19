@@ -93,9 +93,18 @@ public final class Fall
 
 	private final Deque<Frame> frames = new ArrayDeque<>();
 
-	/** A tick of a wave before Jad's. */
+	/**
+	 * A tick of a wave before Jad's. Once a tick shows your hitpoints at nothing, the ticks after
+	 * it (the death animation, prayers switched off, creatures still about) are not kept: they
+	 * would read as having fought on with no prayer up.
+	 */
 	public void add(Frame f)
 	{
+		Frame last = frames.peekLast();
+		if (last != null && last.hp <= 0)
+		{
+			return;
+		}
 		frames.addLast(f);
 		while (frames.size() > KEEP)
 		{

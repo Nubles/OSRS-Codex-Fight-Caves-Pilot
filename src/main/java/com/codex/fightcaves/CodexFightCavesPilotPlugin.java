@@ -1043,6 +1043,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			caveOverlay.show(Marks.NONE);
 			clearRehearsal();
 			compare = null;
+			// Nothing worked out this tick: a warning or call from an earlier one would be stale.
+			danger = 0;
+			call = null;
 			return;
 		}
 		int px = me.getLocalLocation().getSceneX();
