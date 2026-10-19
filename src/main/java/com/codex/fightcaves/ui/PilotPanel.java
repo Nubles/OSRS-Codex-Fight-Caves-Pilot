@@ -280,14 +280,20 @@ public class PilotPanel extends PluginPanel
 			stack.add(card);
 		}
 
-		if (view.call != null || !view.kills.isEmpty())
+		if (view.call != null || !view.kills.isEmpty() || view.danger > 0)
 		{
 			stack.add(new SectionHeader("The fight", "from where you stand"));
 			Card card = new Card(new BorderLayout(0, 6));
+			StackPanel top = new StackPanel(4, 0);
+			if (view.danger > 0)
+			{
+				top.add(dangerBlock(view.danger));
+			}
 			if (view.call != null)
 			{
-				card.add(callBlock(view.call), BorderLayout.NORTH);
+				top.add(callBlock(view.call));
 			}
+			card.add(top, BorderLayout.NORTH);
 			if (!view.kills.isEmpty())
 			{
 				StackPanel rows = new StackPanel(2, 0);
@@ -298,7 +304,7 @@ public class PilotPanel extends PluginPanel
 				}
 				card.add(rows, BorderLayout.CENTER);
 			}
-			card.accent(view.call != null ? Theme.of(view.call.prayer) : Theme.GOLD);
+			card.accent(view.danger > 0 ? Theme.BLOOD : view.call != null ? Theme.of(view.call.prayer) : Theme.GOLD);
 			stack.add(card);
 		}
 
@@ -323,6 +329,11 @@ public class PilotPanel extends PluginPanel
 				rows.add(new WaveRow(w, view.placements(view.rotation, w), w == wave ? WaveRow.Mark.NOW : w == wave + 1 ? WaveRow.Mark.NEXT : WaveRow.Mark.NONE, null));
 			}
 			card.add(rows, BorderLayout.CENTER);
+			if (view.jadAt != null)
+			{
+				card.add(Ui.wrapped("At your usual pace, Jad at about " + Format.ticks(view.jadAt) + " on the run clock.",
+					Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.SOUTH);
+			}
 			stack.add(card);
 		}
 
@@ -403,6 +414,15 @@ public class PilotPanel extends PluginPanel
 	}
 
 	/** The protection prayer to use: its name in the colour of what it answers, and whether it is on. */
+	/** "Eat now": what could land at once past your prayer is enough to finish you. */
+	private static JComponent dangerBlock(int danger)
+	{
+		StackPanel block = new StackPanel(1, 0);
+		block.add(Ui.label("EAT NOW", Theme.title(), Theme.BLOOD));
+		block.add(Ui.wrapped("Up to " + danger + " can land at once past your prayer, enough to finish you.", Theme.small(), Theme.TEXT_MUTED, WIDTH - 40));
+		return block;
+	}
+
 	private static JComponent callBlock(View.Call call)
 	{
 		JPanel block = new JPanel(new BorderLayout(0, 1));
@@ -478,9 +498,13 @@ public class PilotPanel extends PluginPanel
 		stack.add(note("At the cave mouth", "Step in and the pilot takes over: it reads your rotation from the first spawns, gilds the tile where rangers and magers cannot see you, and paces your prayer against the waves left."));
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
-		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Full run", view.paceLearned ? "doses, your rate" : "doses, a guess", Theme.TEAL));
+		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Doses a run", view.paceLearned ? "at your rate" : "a first guess", Theme.TEAL));
 		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best cape", b.capes > 0 ? Format.waves(b.capes).replace("wave", "cape") : "none yet", Theme.GOLD));
 		stack.add(tiles);
+		if (view.jadAt != null)
+		{
+			stack.add(Ui.wrapped("At your usual pace a run reaches Jad in about " + Format.ticks(view.jadAt) + ".", Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
+		}
 		if (view.carried != null)
 		{
 			stack.add(supplyCard(view.carried));
@@ -488,8 +512,13 @@ public class PilotPanel extends PluginPanel
 		if (!b.runs.isEmpty())
 		{
 			stack.add(new SectionHeader("Last run"));
-			Card card = new Card(new BorderLayout());
-			card.add(new RunRow(b.runs.get(b.runs.size() - 1)), BorderLayout.CENTER);
+			Card card = new Card(new BorderLayout(0, 4));
+			Logbook.Run last = b.runs.get(b.runs.size() - 1);
+			card.add(new RunRow(last), BorderLayout.CENTER);
+			if (last.fall != null)
+			{
+				card.add(Ui.wrapped(last.fall, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.SOUTH);
+			}
 			stack.add(card);
 		}
 		stack.add(new SectionHeader("How it reads the cave"));
@@ -618,6 +647,7 @@ public class PilotPanel extends PluginPanel
 
 		if (!b.runs.isEmpty())
 		{
+			buildFall(stack, b);
 			buildSplits(stack, b);
 			buildHurt(stack, b);
 		}
@@ -629,7 +659,7 @@ public class PilotPanel extends PluginPanel
 
 		if (b.runs.isEmpty())
 		{
-			stack.add(Ui.wrapped("Finished runs are filed here: capes, falls and walk-outs, with rotation, time and doses drunk.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+			stack.add(Ui.wrapped("Finished runs are filed here: capes, falls and walk-outs, with rotation, time and doses drunk, and for a fall before Jad, what ended it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 		else
 		{
@@ -707,6 +737,30 @@ public class PilotPanel extends PluginPanel
 		card.add(Ui.wrapped(splitsNote(splits, cape), Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.SOUTH);
 		card.accent(Theme.GOLD);
 		stack.add(card);
+	}
+
+	/** Why the chosen run fell, when it fell before Jad: the cause in a sentence and the hitpoints trail. */
+	private void buildFall(StackPanel stack, Logbook b)
+	{
+		Logbook.Run run = comparedRun(b);
+		if (run == null || run.fall == null)
+		{
+			return;
+		}
+		stack.add(new SectionHeader("The fall", "wave " + run.wave));
+		stack.add(fallCard(run));
+	}
+
+	static Card fallCard(Logbook.Run run)
+	{
+		Card card = new Card(new BorderLayout(0, 6));
+		if (run.fallHp != null && run.fallHp.size() > 1)
+		{
+			card.add(new FallTrail(run.fallHp), BorderLayout.NORTH);
+		}
+		card.add(Ui.wrapped(run.fall, Theme.small(), Theme.TEXT, WIDTH - 40), BorderLayout.CENTER);
+		card.accent(Theme.BLOOD);
+		return card;
 	}
 
 	/** Where the cave hurts you: damage per wave by stretch across your runs, with the chosen run marked. */

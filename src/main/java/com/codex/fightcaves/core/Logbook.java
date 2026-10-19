@@ -40,6 +40,10 @@ public final class Logbook
 		public boolean partial;
 		/** The first wave the pilot saw, 0 or 1 for a run watched from the start. */
 		public int firstWave;
+		/** For a fall before Jad: why it happened, in a sentence or two (see {@link Fall}), or null. */
+		public String fall;
+		/** Your hitpoints over the fall's last ten seconds or so, oldest first, or null. */
+		public List<Integer> fallHp;
 
 		public long millis()
 		{

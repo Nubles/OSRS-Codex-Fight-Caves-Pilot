@@ -146,6 +146,10 @@ public final class View
 	PrayerPacer.Pace carried;
 	/** True when the run in progress was picked up part way, so its clock is not a record. */
 	boolean partial;
+	/** What could land on you at once past your prayer, when it is enough to kill you; else 0. */
+	int danger;
+	/** The run clock when Jad's wave begins at your usual pace, or null when not known. */
+	Integer jadAt;
 
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		Stand stand, double[] you, PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
@@ -234,6 +238,25 @@ public final class View
 	{
 		this.partial = partial;
 		return this;
+	}
+
+	/** Adds the eat warning: what could land at once past your prayer, or 0. */
+	public View withDanger(int danger)
+	{
+		this.danger = danger;
+		return this;
+	}
+
+	/** Adds when the run reaches Jad at your usual pace (from wave 1 outside the cave), or null. */
+	public View withForecast(Integer jadAt)
+	{
+		this.jadAt = jadAt;
+		return this;
+	}
+
+	public int getDanger()
+	{
+		return danger;
 	}
 
 	public Call getCall()

@@ -286,4 +286,59 @@ public final class Splits
 		Collections.reverse(list);
 		return list;
 	}
+
+	/** Timed waves needed before a wave's usual time is trusted. */
+	static final int FORECAST_SAMPLES = 2;
+
+	/**
+	 * Your usual time for a wave: the median of every time a run of yours cleared it, or 0 when
+	 * fewer than {@link #FORECAST_SAMPLES} runs did.
+	 */
+	static int usual(List<Logbook.Run> runs, int wave)
+	{
+		List<Integer> times = new ArrayList<>();
+		for (Logbook.Run r : runs)
+		{
+			if (r.splits != null && wave - 1 < r.splits.size() && r.splits.get(wave - 1) > 0)
+			{
+				times.add(r.splits.get(wave - 1));
+			}
+		}
+		if (times.size() < FORECAST_SAMPLES)
+		{
+			return 0;
+		}
+		Collections.sort(times);
+		int n = times.size();
+		return n % 2 == 1 ? times.get(n / 2) : (times.get(n / 2 - 1) + times.get(n / 2)) / 2;
+	}
+
+	/**
+	 * When a run reaches Jad at your usual pace: its clock now, what is left of the wave on now
+	 * at its usual time, and every wave after it before Jad at theirs.
+	 *
+	 * @param wave the wave on now, 1 to 62
+	 * @param ticks the run's clock now
+	 * @param onWave ticks already spent on the wave on now
+	 * @return the run's clock when Jad's wave begins, or null when a wave still to come has not
+	 *     been cleared often enough to have a usual time
+	 */
+	public static Integer forecast(List<Logbook.Run> runs, int wave, int ticks, int onWave)
+	{
+		if (wave < 1 || wave >= Waves.JAD)
+		{
+			return null;
+		}
+		int total = ticks;
+		for (int w = wave; w < Waves.JAD; w++)
+		{
+			int t = usual(runs, w);
+			if (t <= 0)
+			{
+				return null;
+			}
+			total += w == wave ? Math.max(0, t - onWave) : t;
+		}
+		return total;
+	}
 }

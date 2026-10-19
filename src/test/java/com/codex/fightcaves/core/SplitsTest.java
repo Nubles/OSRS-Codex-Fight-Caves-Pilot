@@ -135,4 +135,43 @@ public class SplitsTest
 		assertEquals(3, recent.get(0)[0]);
 		assertNull(Splits.versusPb(Collections.singletonList(cape), 3, 130, true));
 	}
+
+	private static Logbook.Run timed(int perWave, int waves)
+	{
+		Logbook.Run r = new Logbook.Run();
+		r.result = Logbook.Result.DIED;
+		r.wave = waves;
+		for (int w = 1; w <= waves; w++)
+		{
+			r.splits.add(perWave);
+		}
+		return r;
+	}
+
+	@Test
+	public void forecastsJadFromYourUsualWaves()
+	{
+		java.util.List<Logbook.Run> runs = new java.util.ArrayList<>();
+		runs.add(timed(40, 62));
+		runs.add(timed(50, 62));
+		runs.add(timed(45, 62));
+		// Wave 60 of 62 begun 10 ticks ago, the clock at 2,600: 35 left of it, then 61 and 62 at 45.
+		assertEquals(Integer.valueOf(2600 + 35 + 45 + 45), Splits.forecast(runs, 60, 2600, 10));
+		// Running over the usual time leaves nothing more of the wave on now.
+		assertEquals(Integer.valueOf(3000 + 90), Splits.forecast(runs, 60, 3000, 80));
+		assertNull("no forecast on Jad's own wave", Splits.forecast(runs, Waves.JAD, 3000, 0));
+	}
+
+	@Test
+	public void noForecastWithoutTwoTimesForEveryWaveLeft()
+	{
+		java.util.List<Logbook.Run> runs = new java.util.ArrayList<>();
+		runs.add(timed(40, 62));
+		runs.add(timed(50, 30));
+		assertNull(Splits.forecast(runs, 20, 800, 0));
+		assertNull("waves 31 on were cleared only once", Splits.forecast(runs, 30, 0, 0));
+		runs.add(timed(46, 62));
+		// Waves 20 to 30: 40, 50 and 46, usually 46. Waves 31 to 62: 40 and 46, usually 43.
+		assertEquals(Integer.valueOf(800 + 11 * 46 + 32 * 43), Splits.forecast(runs, 20, 800, 0));
+	}
 }

@@ -15,7 +15,7 @@ import java.util.Map;
 public final class PrayerCall
 {
 	/** Creatures that will hit within this many ticks count as hitting now. */
-	static final int SOON = 2;
+	static final int SOON = Threat.SOON;
 
 	private final Protect prayer;
 	private final Protect also;
@@ -49,26 +49,25 @@ public final class PrayerCall
 	/** @return the call, or null when nothing can hit you soon or Jad is on the floor */
 	public static PrayerCall of(Grid grid, List<StandPlanner.Foe> foes, int x, int y)
 	{
-		Map<Protect, Integer> damage = new EnumMap<>(Protect.class);
-		Map<Protect, List<Monster>> who = new EnumMap<>(Protect.class);
 		for (StandPlanner.Foe f : foes)
 		{
 			if (f.monster == Monster.TZTOK_JAD)
 			{
 				return null;
 			}
-			Chase c = Chase.run(grid, f.monster, f.x, f.y, x, y);
-			if (!c.attacks() || c.getTicks() > SOON)
-			{
-				continue;
-			}
-			Protect p = Protect.against(f.monster.styleAt(c.getX(), c.getY(), x, y));
-			if (p == null)
-			{
-				continue;
-			}
-			damage.merge(p, f.monster.getMaxHit(), Integer::sum);
-			who.computeIfAbsent(p, k -> new ArrayList<>()).add(f.monster);
+		}
+		return of(Threat.of(grid, foes, x, y));
+	}
+
+	/** The call for threats already worked out (see {@link Threat#of}); null when there are none. */
+	public static PrayerCall of(List<Threat> threats)
+	{
+		Map<Protect, Integer> damage = new EnumMap<>(Protect.class);
+		Map<Protect, List<Monster>> who = new EnumMap<>(Protect.class);
+		for (Threat t : threats)
+		{
+			damage.merge(t.getStyle(), t.getMonster().getMaxHit(), Integer::sum);
+			who.computeIfAbsent(t.getStyle(), k -> new ArrayList<>()).add(t.getMonster());
 		}
 		Protect best = null;
 		Protect second = null;

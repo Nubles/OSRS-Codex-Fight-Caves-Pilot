@@ -31,9 +31,11 @@ public class PilotPlaque extends Overlay
 		final Color prayerColor;
 		final String call;
 		final Color callColor;
+		final String danger;
 
-		Shown(String figure, String note, String prayer, Color prayerColor, String call, Color callColor)
+		Shown(String figure, String note, String prayer, Color prayerColor, String call, Color callColor, String danger)
 		{
+			this.danger = danger;
 			this.figure = figure;
 			this.note = note;
 			this.prayer = prayer;
@@ -53,10 +55,11 @@ public class PilotPlaque extends Overlay
 	 * @param note quieter text beside it, such as the rotation
 	 * @param prayer the prayer pace, or null
 	 * @param call the protection prayer the fight calls for, such as "Pray Magic", or null
+	 * @param danger the eat warning, such as "Eat: 67 can land", or null
 	 */
-	public void show(String figure, String note, String prayer, Color prayerColor, String call, Color callColor)
+	public void show(String figure, String note, String prayer, Color prayerColor, String call, Color callColor, String danger)
 	{
-		shown = figure == null ? null : new Shown(figure, note, prayer, prayerColor, call, callColor);
+		shown = figure == null ? null : new Shown(figure, note, prayer, prayerColor, call, callColor, danger);
 	}
 
 	@Override
@@ -81,6 +84,10 @@ public class PilotPlaque extends Overlay
 		if (s.call != null)
 		{
 			width += 10 + small.stringWidth(s.call) + 8;
+		}
+		if (s.danger != null)
+		{
+			width += 10 + small.stringWidth(s.danger) + 8;
 		}
 		int height = Math.max(icon, bold.getHeight()) + PAD;
 
@@ -117,6 +124,20 @@ public class PilotPlaque extends Overlay
 			g.setColor(Theme.alpha(s.callColor, 190));
 			g.drawRoundRect(x - 4, top, w, h, 8, 8);
 			Ui.shadowed(g, s.call, x, base, s.callColor);
+			x += w - 4;
+		}
+		if (s.danger != null)
+		{
+			// The eat warning, in blood, last so it never pushes the prayer call about.
+			x += 10;
+			int w = small.stringWidth(s.danger) + 8;
+			int h = small.getHeight() + 2;
+			int top = (height - h) / 2;
+			g.setColor(Theme.alpha(Theme.BLOOD, 70));
+			g.fillRoundRect(x - 4, top, w, h, 8, 8);
+			g.setColor(Theme.alpha(Theme.BLOOD, 220));
+			g.drawRoundRect(x - 4, top, w, h, 8, 8);
+			Ui.shadowed(g, s.danger, x, base, Theme.TEXT);
 		}
 		return new Dimension(width, height);
 	}

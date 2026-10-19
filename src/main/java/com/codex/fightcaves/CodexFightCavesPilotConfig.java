@@ -99,10 +99,21 @@ public interface CodexFightCavesPilotConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "eatWarning",
+		name = "Eat warning",
+		description = "Say so on the plaque and the panel when what can hit you at once, past your protection prayer, could take all your hitpoints. Not shown on the Jad wave",
+		position = 8
+	)
+	default boolean eatWarning()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "plaque",
 		name = "Pilot plaque",
 		description = "Show a small plaque in the game view with the wave, the rotation and how your prayer is holding up",
-		position = 8
+		position = 9
 	)
 	default boolean plaque()
 	{
@@ -113,7 +124,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "jadDoses",
 		name = "Doses kept for Jad",
 		description = "Prayer doses to hold back for the Jad wave when pacing the rest of the run",
-		position = 9
+		position = 10
 	)
 	@Range(min = 0, max = 28)
 	default int jadDoses()
@@ -124,8 +135,8 @@ public interface CodexFightCavesPilotConfig extends Config
 	@ConfigItem(
 		keyName = "chat",
 		name = "Chat notes",
-		description = "Say in the chat box when the rotation is known and when your prayer falls behind pace",
-		position = 10
+		description = "Say in the chat box when the rotation is known, when your prayer falls behind pace, and why a run ended",
+		position = 11
 	)
 	default boolean chat()
 	{
