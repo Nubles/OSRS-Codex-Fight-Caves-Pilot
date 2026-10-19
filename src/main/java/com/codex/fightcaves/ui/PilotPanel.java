@@ -7,7 +7,9 @@ import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerPacer;
 import com.codex.fightcaves.core.Ready;
+import com.codex.fightcaves.core.RotationRecord;
 import com.codex.fightcaves.core.Rotations;
+import com.codex.fightcaves.core.RunStory;
 import com.codex.fightcaves.core.Splits;
 import com.codex.fightcaves.core.Waves;
 import java.awt.BorderLayout;
@@ -52,6 +54,9 @@ public class PilotPanel extends PluginPanel
 	private final RehearsalChart rehearsalChart = new RehearsalChart(196);
 	/** The run whose splits the Records page sets against your best cape, by when it ended; 0 for the latest. */
 	private long comparedRun;
+	/** Whether the panel is open in the sidebar; the plugin skips rebuilding it while it is not. */
+	private volatile boolean open;
+	private Runnable onOpen;
 
 	public PilotPanel()
 	{
@@ -90,6 +95,35 @@ public class PilotPanel extends PluginPanel
 		return scroll;
 	}
 
+	/** Called when the panel is opened, so the plugin can bring it up to date. */
+	public void onOpen(Runnable action)
+	{
+		onOpen = action;
+	}
+
+	/** True while the panel is open in the sidebar. Safe to read from any thread. */
+	public boolean isOpen()
+	{
+		return open || isShowing();
+	}
+
+	@Override
+	public void onActivate()
+	{
+		open = true;
+		Runnable r = onOpen;
+		if (r != null)
+		{
+			r.run();
+		}
+	}
+
+	@Override
+	public void onDeactivate()
+	{
+		open = false;
+	}
+
 	/** Called on the Swing thread whenever anything shown changes. */
 	public void update(View view)
 	{
@@ -98,7 +132,8 @@ public class PilotPanel extends PluginPanel
 		if (!studyTouched || rotationChanged && view.rotation > 0)
 		{
 			studyRotation = view.rotation > 0 ? view.rotation : studyRotation;
-			studyWave = view.wave > 0 ? view.wave : studyWave;
+			// Jad's wave is not charted for you while you fight it.
+			studyWave = view.wave > 0 && !view.quiet() ? view.wave : studyWave;
 		}
 		updateCrest();
 		rebuild();
@@ -136,7 +171,7 @@ public class PilotPanel extends PluginPanel
 			case OUTSIDE:
 				Logbook b = view.book;
 				String status = b.bestTicks > 0 ? "Best cape " + Format.ticks(b.bestTicks) : b.furthest > 0 ? "Furthest: wave " + b.furthest : "Ready when you are";
-				crest.update("TZHAAR FIGHT CAVE", b.capes > 0 ? String.valueOf(b.capes) : "63", b.capes > 0 ? (b.capes == 1 ? "cape" : "capes") : "waves",
+				crest.update("TZHAAR FIGHT CAVE", b.capes > 0 ? Format.count(b.capes) : "63", b.capes > 0 ? (b.capes == 1 ? "cape" : "capes") : "waves",
 					status, Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.3), Theme.GOLD, 0);
 				return;
 			default:
@@ -147,7 +182,7 @@ public class PilotPanel extends PluginPanel
 		java.awt.Color color = Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.35);
 		if (view.wave == Waves.JAD)
 		{
-			status = "TzTok-Jad. Watch him, not the panel";
+			status = "Watch Jad, not the panel";
 			color = Theme.BLOOD;
 		}
 		else if (view.pace != null && view.pace.getState() == PrayerPacer.State.SHORT)
@@ -208,6 +243,16 @@ public class PilotPanel extends PluginPanel
 		if (view.state == View.State.OUTSIDE)
 		{
 			buildBriefing(stack);
+			replace(pilot, stack);
+			return;
+		}
+
+		if (view.quiet())
+		{
+			// Jad's wave is yours alone: nothing on the panel to read or follow until it ends.
+			Card card = note("TzTok-Jad", "The pilot shows nothing on this wave. Watch him, not the panel. Your run is filed the moment the wave ends.");
+			card.accent(Theme.BLOOD);
+			stack.add(card);
 			replace(pilot, stack);
 			return;
 		}
@@ -458,6 +503,10 @@ public class PilotPanel extends PluginPanel
 			card.add(Ui.label("Rotation " + view.rotation, Theme.title(), Theme.GOLD_BRIGHT), BorderLayout.NORTH);
 			String text = view.clean ? "Read from the spawns. Every wave so far matched it." : "Read from the spawns. One wave disagreed, so keep an eye on the next spawns.";
 			card.add(Ui.wrapped(text, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
+			if (view.book != null)
+			{
+				card.add(Ui.wrapped(recordLine(RotationRecord.of(view.book.runs, view.rotation)), Theme.small(), Theme.GOLD_DIM, WIDTH - 40), BorderLayout.SOUTH);
+			}
 			card.accent(view.clean ? Theme.TEAL : Theme.EMBER);
 			return card;
 		}
@@ -474,6 +523,42 @@ public class PilotPanel extends PluginPanel
 		card.add(Ui.wrapped(text, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
 		card.accent(Theme.TEAL);
 		return card;
+	}
+
+	/** "Rotation 9 so far: 2 capes from 3 runs, best 45:12. Wave 46 ended 2 of them." */
+	static String recordLine(RotationRecord r)
+	{
+		if (r.getRuns() == 0)
+		{
+			return "No run of yours on this rotation yet.";
+		}
+		String line;
+		if (r.getRuns() == 1)
+		{
+			if (r.getCapes() == 1)
+			{
+				line = r.getBestTicks() > 0 ? "You caped it once before, in " + Format.ticks(r.getBestTicks()) + "." : "You caped it once before.";
+			}
+			else
+			{
+				line = r.getWall() > 0 ? "Your one run on it fell on wave " + r.getWall() + "." : "Your one run on it ended on wave " + r.getFurthest() + ".";
+			}
+			return line;
+		}
+		if (r.getCapes() > 0)
+		{
+			line = "Your runs on it: " + (r.getCapes() == 1 ? "1 cape" : r.getCapes() + " capes") + " from " + r.getRuns()
+				+ (r.getBestTicks() > 0 ? ", best " + Format.ticks(r.getBestTicks()) : "") + ".";
+		}
+		else
+		{
+			line = "Your runs on it: " + r.getRuns() + ", furthest wave " + r.getFurthest() + ".";
+		}
+		if (r.getWallFalls() >= 2)
+		{
+			line += " Wave " + r.getWall() + " ended " + r.getWallFalls() + " of them.";
+		}
+		return line;
 	}
 
 	private static String lowerFirst(String s)
@@ -502,7 +587,7 @@ public class PilotPanel extends PluginPanel
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
 		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Doses a run", view.paceLearned ? "at your rate" : "a first guess", Theme.TEAL));
-		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best cape", b.capes > 0 ? Format.waves(b.capes).replace("wave", "cape") : "none yet", Theme.GOLD));
+		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best cape", b.capes > 0 ? Format.count(b.capes) + (b.capes == 1 ? " cape" : " capes") : "none yet", Theme.GOLD));
 		stack.add(tiles);
 		if (view.jadAt != null)
 		{
@@ -519,15 +604,13 @@ public class PilotPanel extends PluginPanel
 		stack.add(bankCard(view.banked, view.fullRunDoses, System.currentTimeMillis()));
 		if (!b.runs.isEmpty())
 		{
-			stack.add(new SectionHeader("Last run"));
-			Card card = new Card(new BorderLayout(0, 4));
+			stack.add(new SectionHeader("Last run", Format.day(b.runs.get(b.runs.size() - 1).endedAt)));
 			Logbook.Run last = b.runs.get(b.runs.size() - 1);
-			card.add(new RunRow(last), BorderLayout.CENTER);
+			stack.add(new RunScroll(RunStory.of(b.runs, last, b.capes)));
 			if (last.fall != null)
 			{
-				card.add(Ui.wrapped(last.fall, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.SOUTH);
+				stack.add(fallCard(last));
 			}
-			stack.add(card);
 		}
 		stack.add(new SectionHeader("How it reads the cave"));
 		stack.add(Ui.wrapped("Wave 1 narrows the 15 rotations to three and wave 2 nearly always settles it; rotations 7 and 8 wait for wave 4. Creatures are coloured by the prayer that answers them: ember melee, green range, violet magic.",
@@ -583,7 +666,7 @@ public class PilotPanel extends PluginPanel
 		{
 			return "Under a run in the bank";
 		}
-		return (runs == 1 ? "1 run" : runs + " runs") + " in the bank";
+		return (runs == 1 ? "1 run" : Format.count(runs) + " runs") + " in the bank";
 	}
 
 	/** "120 doses in the bank, at about 24 a run. Counted 3 hours ago." */
@@ -596,7 +679,7 @@ public class PilotPanel extends PluginPanel
 		{
 			seen = " From Codex Bank Steward.";
 		}
-		String text = Format.doses((int) Math.min(Integer.MAX_VALUE, banked.getDoses())) + " of prayer potion, super restore and sanfew serum";
+		String text = Format.doses(banked.getDoses()) + " of prayer potion, super restore and sanfew serum";
 		if (perRun > 0)
 		{
 			text += ", against about " + perRun + " a run at your rate, Jad's share included.";
@@ -661,6 +744,10 @@ public class PilotPanel extends PluginPanel
 		});
 		picker.show(studyRotation, view.rotation, view.candidates);
 		stack.add(picker);
+		if (view.state != View.State.LOGGED_OUT && view.book != null)
+		{
+			stack.add(Ui.wrapped(recordLine(RotationRecord.of(view.book.runs, studyRotation)), Theme.small(), Theme.GOLD_DIM, WIDTH - 16));
+		}
 
 		String codes = studyRotation == view.rotation && view.outlook != null ? view.outlook
 			: Outlook.saved(view.book.outlooks, studyRotation, 0);
@@ -721,23 +808,36 @@ public class PilotPanel extends PluginPanel
 		}
 		JPanel tiles = new JPanel(new GridLayout(2, 2, 6, 6));
 		tiles.setOpaque(false);
-		tiles.add(new StatTile(String.valueOf(b.capes), "Capes", b.attempts > 0 ? Math.round(100.0 * b.capes / b.attempts) + "% of runs" : "", Theme.GOLD_BRIGHT));
-		tiles.add(new StatTile(String.valueOf(b.attempts), "Runs", "since installing", Theme.TEXT));
+		tiles.add(new StatTile(Format.count(b.capes), "Capes", b.attempts > 0 ? Math.round(100.0 * b.capes / b.attempts) + "% of runs" : "", Theme.GOLD_BRIGHT));
+		tiles.add(new StatTile(Format.count(b.attempts), "Runs", "since installing", Theme.TEXT));
 		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best time", "caped runs", Theme.GREEN));
 		tiles.add(new StatTile(b.furthest > 0 ? String.valueOf(b.furthest) : "-", "Furthest", "wave reached", Theme.EMBER));
 		stack.add(tiles);
 
 		if (!b.runs.isEmpty())
 		{
+			Logbook.Run run = comparedRun(b);
+			boolean latest = run == b.runs.get(b.runs.size() - 1);
+			stack.add(new SectionHeader("The run", latest ? "latest" : Format.day(run.endedAt)));
+			stack.add(new RunScroll(RunStory.of(b.runs, run, b.capes)));
 			buildFall(stack, b);
 			buildSplits(stack, b);
 			buildHurt(stack, b);
 		}
 
-		stack.add(new SectionHeader("Where runs end"));
-		Card deaths = new Card(new BorderLayout());
-		deaths.add(new DeathChart(b.deaths), BorderLayout.CENTER);
-		stack.add(deaths);
+		int falls = 0;
+		for (int d : b.deaths)
+		{
+			falls += d;
+		}
+		if (falls > 0)
+		{
+			// Only once a run has fallen: an empty chart says nothing.
+			stack.add(new SectionHeader("Where runs end", falls == 1 ? "1 fall" : Format.count(falls) + " falls"));
+			Card deaths = new Card(new BorderLayout());
+			deaths.add(new DeathChart(b.deaths), BorderLayout.CENTER);
+			stack.add(deaths);
+		}
 
 		if (b.runs.isEmpty())
 		{

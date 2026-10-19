@@ -39,10 +39,16 @@ public final class Format
 		return SHORT.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()));
 	}
 
-	/** "1 dose", "3 doses" */
-	public static String doses(int n)
+	/** A count with thousands marked: 1,234. */
+	public static String count(long n)
 	{
-		return n + (n == 1 ? " dose" : " doses");
+		return String.format(Locale.ENGLISH, "%,d", n);
+	}
+
+	/** "1 dose", "3 doses", "1,250 doses" */
+	public static String doses(long n)
+	{
+		return count(n) + (n == 1 ? " dose" : " doses");
 	}
 
 	/** "1 wave", "3 waves" */

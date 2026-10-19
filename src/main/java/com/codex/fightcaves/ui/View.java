@@ -282,6 +282,15 @@ public final class View
 		return call;
 	}
 
+	/**
+	 * True on Jad's wave inside the cave. The pilot then shows nothing to read or follow: no
+	 * plaque, no chart, no prayer pacing and no splits, only a line saying it has stepped back.
+	 */
+	public boolean quiet()
+	{
+		return state == State.IN_CAVE && wave >= com.codex.fightcaves.core.Waves.JAD;
+	}
+
 	public State getState()
 	{
 		return state;

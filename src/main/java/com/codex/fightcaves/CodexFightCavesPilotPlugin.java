@@ -252,6 +252,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	protected void startUp()
 	{
 		panel = new PilotPanel();
+		// The panel is only rebuilt while it is open, so bring it up to date as it opens.
+		panel.onOpen(() -> clientThread.invokeLater(() -> publish(true)));
 		navButton = NavigationButton.builder()
 			.tooltip("Codex Fight Caves Pilot")
 			.icon(Sigil.icon(16))
@@ -900,7 +902,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			a.rotation = rotation;
 		}
-		if (rotation > 0 && rotation != before && config.chat())
+		// Not on Jad's wave, where the pilot says nothing at all.
+		if (rotation > 0 && rotation != before && config.chat() && wave < Waves.JAD)
 		{
 			chat("rotation " + rotation + ", read on wave " + wave + ".");
 		}
@@ -1523,6 +1526,17 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private void publish(boolean force)
 	{
 		PilotPanel target = panel;
+		if (target == null || !target.isOpen())
+		{
+			// Closed: no logbook copy and no rebuild, just the plaque, and outside the cave only to take
+			// it down. Opening the panel forces a fresh view.
+			lastViewKey = null;
+			if (inCave || force || plaque.isShowing())
+			{
+				updatePlaque(buildView(false));
+			}
+			return;
+		}
 		String key = viewKey();
 		boolean changed = force || !key.equals(lastViewKey);
 		if (!changed)
@@ -1741,7 +1755,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private void updatePlaque(View v)
 	{
-		if (!config.plaque() || v.getState() != View.State.IN_CAVE || v.getWave() == 0)
+		// Nothing on Jad's wave, not even the wave and your doses: the fight is yours to read.
+		if (!config.plaque() || v.getState() != View.State.IN_CAVE || v.getWave() == 0 || v.quiet())
 		{
 			plaque.show(null, null, null, null, null, null, null);
 			return;

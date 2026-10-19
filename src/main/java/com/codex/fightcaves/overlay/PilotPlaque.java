@@ -21,7 +21,16 @@ public class PilotPlaque extends Overlay
 {
 	private static final int PAD = 7;
 
+	/** The cape mark, drawn once rather than traced every frame. */
+	private static final java.awt.image.BufferedImage MARK = Sigil.icon(16);
+	private static final Color RIM = Theme.alpha(Theme.GOLD, 150);
+	private static final Color DANGER_FILL = Theme.alpha(Theme.BLOOD, 70);
+	private static final Color DANGER_LINE = Theme.alpha(Theme.BLOOD, 220);
+
 	private volatile Shown shown;
+	/** The plaque's backdrop, made again only when its height changes. */
+	private GradientPaint backdrop;
+	private int backdropHeight;
 
 	private static final class Shown
 	{
@@ -32,6 +41,8 @@ public class PilotPlaque extends Overlay
 		final String call;
 		final Color callColor;
 		final String danger;
+		final Color callFill;
+		final Color callLine;
 
 		Shown(String figure, String note, String prayer, Color prayerColor, String call, Color callColor, String danger)
 		{
@@ -42,6 +53,8 @@ public class PilotPlaque extends Overlay
 			this.prayerColor = prayerColor;
 			this.call = call;
 			this.callColor = callColor;
+			this.callFill = callColor == null ? null : Theme.alpha(callColor, 40);
+			this.callLine = callColor == null ? null : Theme.alpha(callColor, 190);
 		}
 	}
 
@@ -60,6 +73,12 @@ public class PilotPlaque extends Overlay
 	public void show(String figure, String note, String prayer, Color prayerColor, String call, Color callColor, String danger)
 	{
 		shown = figure == null ? null : new Shown(figure, note, prayer, prayerColor, call, callColor, danger);
+	}
+
+	/** True while the plaque has something to draw. */
+	public boolean isShowing()
+	{
+		return shown != null;
 	}
 
 	@Override
@@ -92,13 +111,18 @@ public class PilotPlaque extends Overlay
 		int height = Math.max(icon, bold.getHeight()) + PAD;
 
 		RoundRectangle2D shape = new RoundRectangle2D.Float(0.5f, 0.5f, width - 1, height - 1, 10, 10);
-		g.setPaint(new GradientPaint(0, 0, Theme.alpha(Theme.CARD_TOP, 230), 0, height, Theme.alpha(Theme.INK_DEEP, 230)));
+		if (backdrop == null || backdropHeight != height)
+		{
+			backdrop = new GradientPaint(0, 0, Theme.alpha(Theme.CARD_TOP, 230), 0, height, Theme.alpha(Theme.INK_DEEP, 230));
+			backdropHeight = height;
+		}
+		g.setPaint(backdrop);
 		g.fill(shape);
-		g.setColor(Theme.alpha(Theme.GOLD, 150));
+		g.setColor(RIM);
 		g.draw(shape);
 
 		int x = PAD;
-		Sigil.paint(g, x, (height - icon) / 2f, icon);
+		g.drawImage(MARK, x, (height - icon) / 2, null);
 		x += icon + 6;
 		int base = (height + bold.getAscent()) / 2 - 2;
 		g.setFont(Theme.title());
@@ -119,9 +143,9 @@ public class PilotPlaque extends Overlay
 			int w = small.stringWidth(s.call) + 8;
 			int h = small.getHeight() + 2;
 			int top = (height - h) / 2;
-			g.setColor(Theme.alpha(s.callColor, 40));
+			g.setColor(s.callFill);
 			g.fillRoundRect(x - 4, top, w, h, 8, 8);
-			g.setColor(Theme.alpha(s.callColor, 190));
+			g.setColor(s.callLine);
 			g.drawRoundRect(x - 4, top, w, h, 8, 8);
 			Ui.shadowed(g, s.call, x, base, s.callColor);
 			x += w - 4;
@@ -133,9 +157,9 @@ public class PilotPlaque extends Overlay
 			int w = small.stringWidth(s.danger) + 8;
 			int h = small.getHeight() + 2;
 			int top = (height - h) / 2;
-			g.setColor(Theme.alpha(Theme.BLOOD, 70));
+			g.setColor(DANGER_FILL);
 			g.fillRoundRect(x - 4, top, w, h, 8, 8);
-			g.setColor(Theme.alpha(Theme.BLOOD, 220));
+			g.setColor(DANGER_LINE);
 			g.drawRoundRect(x - 4, top, w, h, 8, 8);
 			Ui.shadowed(g, s.danger, x, base, Theme.TEXT);
 		}
