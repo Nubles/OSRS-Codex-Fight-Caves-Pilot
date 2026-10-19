@@ -138,6 +138,14 @@ public final class View
 	com.codex.fightcaves.core.Compare compare;
 	/** The latest waves cleared this run: {wave, ticks, ticks against your best cape or MIN_VALUE}. */
 	List<int[]> recentSplits = Collections.emptyList();
+	/** The road to Jad for your rotation, one letter per wave (see Outlook), or null. */
+	String outlook;
+	/** Why the next hard wave is hard, from this visit's plan, or null. */
+	String outlookReason;
+	/** Your prayer against a whole run with what you carry, for the briefing outside the cave, or null. */
+	PrayerPacer.Pace carried;
+	/** True when the run in progress was picked up part way, so its clock is not a record. */
+	boolean partial;
 
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		Stand stand, double[] you, PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
@@ -203,6 +211,28 @@ public final class View
 	public View withSplits(List<int[]> recentSplits)
 	{
 		this.recentSplits = recentSplits == null ? Collections.emptyList() : recentSplits;
+		return this;
+	}
+
+	/** Adds the road to Jad and why its next hard wave is hard. */
+	public View withOutlook(String outlook, String reason)
+	{
+		this.outlook = outlook;
+		this.outlookReason = reason;
+		return this;
+	}
+
+	/** Adds your prayer against a whole run, for the briefing. */
+	public View withCarried(PrayerPacer.Pace carried)
+	{
+		this.carried = carried;
+		return this;
+	}
+
+	/** Marks the run in progress as picked up part way. */
+	public View withPartial(boolean partial)
+	{
+		this.partial = partial;
 		return this;
 	}
 

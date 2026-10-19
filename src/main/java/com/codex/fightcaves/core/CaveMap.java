@@ -22,7 +22,12 @@ public final class CaveMap
 	/** How far a learned spawn may sit from its known tile before it is treated as a misreading. */
 	private static final double DRIFT = 6;
 
+	/** Saved anchor keys for one size of creature are the spawn code, this, and the size. */
+	static final String SIZE = "#";
+
 	private final Map<Spawn, double[]> learned = new EnumMap<>(Spawn.class);
+	/** "code#size" to the average south-west tile creatures of that size appeared on. */
+	private final Map<String, double[]> bySize = new java.util.HashMap<>();
 
 	/** @param anchors saved sightings: spawn code to {sum of x, sum of y, count} of south-west tiles */
 	public CaveMap(Map<String, double[]> anchors)
@@ -40,13 +45,22 @@ public final class CaveMap
 			}
 			try
 			{
-				Spawn s = Spawn.ofCode(e.getKey());
+				String key = e.getKey();
+				int hash = key.indexOf(SIZE);
+				Spawn s = Spawn.ofCode(hash < 0 ? key : key.substring(0, hash));
 				double x = a[0] / a[2];
 				double y = a[1] / a[2];
 				double[] k = known(s);
 				if (Math.abs(x - k[0]) <= DRIFT && Math.abs(y - k[1]) <= DRIFT)
 				{
-					learned.put(s, new double[]{x, y});
+					if (hash < 0)
+					{
+						learned.put(s, new double[]{x, y});
+					}
+					else
+					{
+						bySize.put(key, new double[]{x, y});
+					}
 				}
 			}
 			catch (IllegalArgumentException ignored)
@@ -104,15 +118,42 @@ public final class CaveMap
 		return new int[]{(int) Math.round(c[0]), (int) Math.round(c[1])};
 	}
 
+	/**
+	 * The south-west tile a creature of this size appears on at a spawn point: where that size
+	 * was seen there before, otherwise where any creature was. A mager's body is five tiles
+	 * across and a bat's one, so the game may not put both corners on the same tile.
+	 */
+	public int[] tile(Spawn spawn, int size)
+	{
+		double[] c = bySize.get(spawn.getCode() + SIZE + size);
+		if (c == null)
+		{
+			return tile(spawn);
+		}
+		return new int[]{(int) Math.round(c[0]), (int) Math.round(c[1])};
+	}
+
 	/** Adds one sighting, by the creature's south-west tile, to the saved anchors. */
 	public static void learn(Map<String, double[]> anchors, Spawn spawn, double x, double y)
+	{
+		learn(anchors, spawn.getCode(), spawn, x, y);
+	}
+
+	/** Adds one sighting to the spawn's anchor and to the anchor for creatures of its size. */
+	public static void learn(Map<String, double[]> anchors, Spawn spawn, int size, double x, double y)
+	{
+		learn(anchors, spawn.getCode(), spawn, x, y);
+		learn(anchors, spawn.getCode() + SIZE + size, spawn, x, y);
+	}
+
+	private static void learn(Map<String, double[]> anchors, String key, Spawn spawn, double x, double y)
 	{
 		double[] k = known(spawn);
 		if (Math.abs(x - k[0]) > DRIFT || Math.abs(y - k[1]) > DRIFT)
 		{
 			return;
 		}
-		double[] a = anchors.computeIfAbsent(spawn.getCode(), c -> new double[3]);
+		double[] a = anchors.computeIfAbsent(key, c -> new double[3]);
 		// Keep the average from drifting forever: after 20 sightings, older ones count less.
 		if (a[2] >= 20)
 		{

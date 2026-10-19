@@ -55,10 +55,21 @@ public interface CodexFightCavesPilotConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "outlook",
+		name = "Road to Jad",
+		description = "Rate every wave of your rotation before it comes: clean when every ranger and mager sticks behind a pillar, pray when one style reaches you, split when two styles reach you from every tile in reach. Saved for the Waves page",
+		position = 4
+	)
+	default boolean outlook()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "stuckTags",
 		name = "Tag stuck creatures",
 		description = "Label rangers and magers that are stuck behind a pillar and cannot hit you where you stand",
-		position = 4
+		position = 5
 	)
 	default boolean stuckTags()
 	{
@@ -69,7 +80,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "killOrder",
 		name = "Kill order",
 		description = "Number the creatures in the order to kill them: whatever hits you hardest for its health first, then anything stuck where you can hit it. Not shown on the Jad wave",
-		position = 5
+		position = 6
 	)
 	default boolean killOrder()
 	{
@@ -80,7 +91,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "prayerCall",
 		name = "Prayer to use",
 		description = "Name the protection prayer that blocks the most of what can hit you where you stand. Not shown on the Jad wave",
-		position = 6
+		position = 7
 	)
 	default boolean prayerCall()
 	{
@@ -91,7 +102,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "plaque",
 		name = "Pilot plaque",
 		description = "Show a small plaque in the game view with the wave, the rotation and how your prayer is holding up",
-		position = 7
+		position = 8
 	)
 	default boolean plaque()
 	{
@@ -102,7 +113,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "jadDoses",
 		name = "Doses kept for Jad",
 		description = "Prayer doses to hold back for the Jad wave when pacing the rest of the run",
-		position = 8
+		position = 9
 	)
 	@Range(min = 0, max = 28)
 	default int jadDoses()
@@ -114,7 +125,7 @@ public interface CodexFightCavesPilotConfig extends Config
 		keyName = "chat",
 		name = "Chat notes",
 		description = "Say in the chat box when the rotation is known and when your prayer falls behind pace",
-		position = 9
+		position = 10
 	)
 	default boolean chat()
 	{

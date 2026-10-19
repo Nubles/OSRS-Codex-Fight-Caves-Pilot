@@ -1,6 +1,8 @@
 package com.codex.fightcaves.ui;
 
+import com.codex.fightcaves.core.Damage;
 import com.codex.fightcaves.core.Logbook;
+import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerPacer;
 import com.codex.fightcaves.core.Rotations;
@@ -324,6 +326,11 @@ public class PilotPanel extends PluginPanel
 			stack.add(card);
 		}
 
+		if (view.rotation > 0 && view.outlook != null && wave < Waves.JAD)
+		{
+			buildRoad(stack, wave);
+		}
+
 		if (!view.recentSplits.isEmpty())
 		{
 			boolean racing = view.recentSplits.get(0)[2] != Integer.MIN_VALUE;
@@ -349,12 +356,50 @@ public class PilotPanel extends PluginPanel
 
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
-		String vs = view.versusBest == null ? "no cape yet" : Format.delta(view.versusBest) + " vs best";
+		String vs = view.partial ? "picked up part way" : view.versusBest == null ? "no cape yet" : Format.delta(view.versusBest) + " vs best";
 		tiles.add(new StatTile(Format.ticks(view.runTicks), "Run time", vs,
 			view.versusBest == null ? Theme.GOLD : view.versusBest <= 0 ? Theme.GREEN : Theme.EMBER));
 		tiles.add(new StatTile(view.prayer + "/" + view.prayerLevel, "Prayer", view.pace == null ? "" : "sip at " + view.pace.getDrinkBelow(), Theme.TEAL));
 		stack.add(tiles);
 		replace(pilot, stack);
+	}
+
+	/** The road to Jad: every wave of the rotation rated, and a line on the next hard one. */
+	private void buildRoad(StackPanel stack, int wave)
+	{
+		String codes = view.outlook;
+		int splits = Outlook.counted(codes, wave, Outlook.Rating.SPLIT);
+		int prays = Outlook.counted(codes, wave, Outlook.Rating.PRAY);
+		stack.add(new SectionHeader("Road to Jad", splits + " split, " + prays + " pray ahead"));
+		Card card = new Card(new BorderLayout(0, 6));
+		card.add(new WaveGrid(codes, wave, 0, null), BorderLayout.NORTH);
+		StackPanel lines = new StackPanel(3, 0);
+		lines.add(Ui.wrapped(roadLine(codes, wave, view.outlookReason), Theme.small(),
+			splits > 0 ? Theme.mix(Theme.TEXT_MUTED, Theme.EMBER, 0.35) : Theme.TEAL, WIDTH - 40));
+		lines.add(Ui.wrapped("Teal is clean: rangers and magers stick. Gold is pray: one style reaches you. Ember is split: two do.",
+			Theme.small(), Theme.TEXT_FAINT, WIDTH - 40));
+		card.add(lines, BorderLayout.CENTER);
+		card.accent(splits > 0 ? Theme.EMBER : Theme.TEAL);
+		stack.add(card);
+	}
+
+	/** "Wave 46 is the next split, in 3 waves. The mager sees you..." */
+	static String roadLine(String codes, int wave, String reason)
+	{
+		int next = Outlook.nextAtLeast(codes, wave, Outlook.Rating.SPLIT);
+		if (next == 0)
+		{
+			int pray = Outlook.nextAtLeast(codes, wave, Outlook.Rating.PRAY);
+			if (pray == 0)
+			{
+				return codes != null && codes.indexOf(Outlook.UNKNOWN) >= 0 && codes.indexOf(Outlook.UNKNOWN) < Waves.JAD - 1
+					? "Rating the waves ahead." : "Every wave left before Jad is clean.";
+			}
+			return "No split wave left before Jad. Next to pray through: wave " + pray + "." + (reason == null ? "" : " " + reason);
+		}
+		int in = next - wave;
+		String when = in == 1 ? "the next wave" : "in " + in + " waves";
+		return "Wave " + next + " is the next split, " + when + "." + (reason == null ? " No tile in reach keeps both styles off you." : " " + reason);
 	}
 
 	/** The protection prayer to use: its name in the colour of what it answers, and whether it is on. */
@@ -436,6 +481,10 @@ public class PilotPanel extends PluginPanel
 		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Full run", view.paceLearned ? "doses, your rate" : "doses, a guess", Theme.TEAL));
 		tiles.add(new StatTile(b.bestTicks > 0 ? Format.ticks(b.bestTicks) : "-", "Best cape", b.capes > 0 ? Format.waves(b.capes).replace("wave", "cape") : "none yet", Theme.GOLD));
 		stack.add(tiles);
+		if (view.carried != null)
+		{
+			stack.add(supplyCard(view.carried));
+		}
 		if (!b.runs.isEmpty())
 		{
 			stack.add(new SectionHeader("Last run"));
@@ -446,6 +495,45 @@ public class PilotPanel extends PluginPanel
 		stack.add(new SectionHeader("How it reads the cave"));
 		stack.add(Ui.wrapped("Wave 1 narrows the 15 rotations to three and wave 2 nearly always settles it; rotations 7 and 8 wait for wave 4. Creatures are coloured by the prayer that answers them: ember melee, green range, violet magic.",
 			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+	}
+
+	/** What you carry against a whole run: enough, with how many spare, or how many short. */
+	private static Card supplyCard(PrayerPacer.Pace p)
+	{
+		Card card = new Card(new BorderLayout(0, 2));
+		card.add(Ui.label(supplyTitle(p), Theme.title(), Theme.of(p.getState())), BorderLayout.NORTH);
+		card.add(Ui.wrapped(supplyText(p), Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
+		card.accent(Theme.of(p.getState()));
+		return card;
+	}
+
+	static String supplyTitle(PrayerPacer.Pace p)
+	{
+		switch (p.getState())
+		{
+			case SHORT:
+				return "Short for a full run";
+			case TIGHT:
+				return "Cutting it close";
+			default:
+				return "Enough for a full run";
+		}
+	}
+
+	/** "You carry 24 doses; the waves and Jad take about 20, leaving 3 spare." */
+	static String supplyText(PrayerPacer.Pace p)
+	{
+		double spare = p.getSpare();
+		String text = "You carry " + Format.doses(p.getDoses()) + "; the waves and Jad take about " + p.getDosesNeeded();
+		if (spare >= 1)
+		{
+			return text + ", leaving " + (long) Math.floor(spare) + " spare.";
+		}
+		if (spare > -1)
+		{
+			return text + ", with nothing to spare: one more potion gives room for a slow wave.";
+		}
+		return text + ", so bring about " + Format.doses((int) Math.ceil(-spare)) + " more.";
 	}
 
 	// The Waves page.
@@ -462,6 +550,21 @@ public class PilotPanel extends PluginPanel
 		});
 		picker.show(studyRotation, view.rotation, view.candidates);
 		stack.add(picker);
+
+		String codes = studyRotation == view.rotation && view.outlook != null ? view.outlook
+			: Outlook.saved(view.book.outlooks, studyRotation, 0);
+		int now = view.state == View.State.IN_CAVE && studyRotation == view.rotation ? view.wave : 0;
+		stack.add(new SectionHeader("Road to Jad", "click to chart"));
+		stack.add(new WaveGrid(codes, now, studyWave, w ->
+		{
+			studyWave = w;
+			studyTouched = true;
+			rebuildWaves();
+		}));
+		if (codes == null)
+		{
+			stack.add(Ui.wrapped("Each wave is rated once you have fought this rotation with the road to Jad on.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
 
 		CaveChart chart = new CaveChart(160);
 		int nextWave = Math.min(Waves.LAST, studyWave + 1);
@@ -516,6 +619,7 @@ public class PilotPanel extends PluginPanel
 		if (!b.runs.isEmpty())
 		{
 			buildSplits(stack, b);
+			buildHurt(stack, b);
 		}
 
 		stack.add(new SectionHeader("Where runs end"));
@@ -602,6 +706,33 @@ public class PilotPanel extends PluginPanel
 		card.add(rows, BorderLayout.CENTER);
 		card.add(Ui.wrapped(splitsNote(splits, cape), Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.SOUTH);
 		card.accent(Theme.GOLD);
+		stack.add(card);
+	}
+
+	/** Where the cave hurts you: damage per wave by stretch across your runs, with the chosen run marked. */
+	private void buildHurt(StackPanel stack, Logbook b)
+	{
+		double[] average = Damage.perWaveByStretch(b.runs);
+		if (Damage.worstStretch(average) < 0)
+		{
+			return;
+		}
+		Logbook.Run run = comparedRun(b);
+		double[] mine = run == null ? null : Damage.perWaveByStretch(Collections.singletonList(run));
+		int worst = Damage.worstStretch(average);
+		stack.add(new SectionHeader("Where it hurts", "damage a wave"));
+		Card card = new Card(new BorderLayout(0, 6));
+		card.add(new HurtChart(average, mine, worst), BorderLayout.CENTER);
+		int from = worst * Splits.STRETCH + 1;
+		String label = from + "-" + (from + Splits.STRETCH - 1 >= Waves.JAD ? "Jad" : String.valueOf(from + Splits.STRETCH - 1));
+		String note = "Waves " + label + " hurt most, about " + Math.round(average[worst]) + " damage a wave.";
+		String summary = Damage.summary(run);
+		if (!summary.isEmpty())
+		{
+			note += " This run: " + lowerFirst(summary);
+		}
+		card.add(Ui.wrapped(note + " The gold tick is the run picked below.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.SOUTH);
+		card.accent(Theme.EMBER);
 		stack.add(card);
 	}
 

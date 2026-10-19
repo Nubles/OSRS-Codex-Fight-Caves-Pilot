@@ -105,6 +105,7 @@ class RunRow extends JComponent
 		g.setColor(Theme.TEXT_FAINT);
 		g.drawString(when, w - small.stringWidth(when), 12);
 		String detail = (run.rotation > 0 ? "Rotation " + run.rotation : "Rotation unknown") + "  " + Format.ticks(run.ticks)
+			+ (run.partial && run.firstWave > 1 ? " from " + run.firstWave : "")
 			+ (run.dosesUsed > 0 ? "  " + Format.doses(run.dosesUsed) : "");
 		g.setColor(Theme.TEXT_MUTED);
 		g.drawString(Ui.clip(detail, small, w - 32), 32, h - 5);

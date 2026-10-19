@@ -71,12 +71,12 @@ public class SplitsTest
 	public void liveRunRacesTheCape()
 	{
 		List<Logbook.Run> runs = Collections.singletonList(run(Logbook.Result.CAPE, 63, 50));
-		assertEquals(Integer.valueOf(-20), Splits.versusPb(runs, 3, 130));
+		assertEquals(Integer.valueOf(-20), Splits.versusPb(runs, 3, 130, false));
 		// A faster run that died is not the cape being raced.
 		List<Logbook.Run> withFall = Arrays.asList(run(Logbook.Result.CAPE, 63, 50), run(Logbook.Result.DIED, 20, 30));
-		assertEquals(Integer.valueOf(-20), Splits.versusPb(withFall, 3, 130));
-		assertNull(Splits.versusPb(Collections.emptyList(), 3, 130));
-		assertNull(Splits.versusPb(runs, 0, 0));
+		assertEquals(Integer.valueOf(-20), Splits.versusPb(withFall, 3, 130, false));
+		assertNull(Splits.versusPb(Collections.emptyList(), 3, 130, false));
+		assertNull(Splits.versusPb(runs, 0, 0, false));
 	}
 
 	@Test
@@ -111,5 +111,28 @@ public class SplitsTest
 		}
 		assertEquals(Logbook.KEEP_RUNS, b.runs.size());
 		assertEquals(cape, Splits.personalBest(b.runs));
+	}
+
+	@Test
+	public void untimedWavesNeverCountAsFast()
+	{
+		Logbook.Run cape = run(Logbook.Result.CAPE, 63, 50);
+		// Picked up at wave 20: waves 1 to 19 untimed, the rest at 30 ticks.
+		Logbook.Run partial = run(Logbook.Result.DIED, 40, 30);
+		partial.partial = true;
+		for (int i = 0; i < 19; i++)
+		{
+			partial.splits.set(i, 0);
+		}
+		Splits s = Splits.of(Arrays.asList(cape, partial), partial);
+		assertEquals(350, s.getStretches().get(0).getBest());
+		assertEquals(0, s.getStretches().get(0).getRun());
+		assertEquals(0, s.getStretches().get(2).getRun());
+		assertEquals(7 * 30, s.getStretches().get(3).getRun());
+		assertEquals(19 * 50 + 21 * 30 + 23 * 50, s.getSumOfBest());
+		List<int[]> recent = Splits.recent(Collections.singletonList(cape), Arrays.asList(0, 0, 41), 3);
+		assertEquals(1, recent.size());
+		assertEquals(3, recent.get(0)[0]);
+		assertNull(Splits.versusPb(Collections.singletonList(cape), 3, 130, true));
 	}
 }

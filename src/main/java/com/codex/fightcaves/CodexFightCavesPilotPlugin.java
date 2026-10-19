@@ -3,10 +3,12 @@ package com.codex.fightcaves;
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.Chase;
 import com.codex.fightcaves.core.Compare;
+import com.codex.fightcaves.core.Damage;
 import com.codex.fightcaves.core.Grid;
 import com.codex.fightcaves.core.KillOrder;
 import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Monster;
+import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerCall;
 import com.codex.fightcaves.core.PrayerPacer;
@@ -57,6 +59,7 @@ import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
@@ -99,6 +102,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private static final int SAVE_TICKS = 100;
 	/** Ticks between re-working where to stand while a wave is on. */
 	private static final int PLAN_TICKS = 2;
+	/** Ticks to wait, after leaving the cave on the Jad wave, for the kill count that says it was a cape. */
+	private static final int CAPE_GRACE = 10;
 	/** How much safer a new tile has to be before the gilt tile moves, so it does not flicker. */
 	private static final double MOVE_MARGIN = 0.8;
 
@@ -156,6 +161,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private int pendingWave;
 	private int pendingTick;
 	private boolean died;
+	/** Hitpoints on the last tick in the cave, or -1 before the first. */
+	private int lastHp = -1;
+	/** The tick you left the cave on the Jad wave without falling, or -1: the cape message may follow. */
+	private int jadExitTick = -1;
 	private int lastPrayer = -1;
 	private int waveSpent;
 	private int prayerDoses;
@@ -189,6 +198,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private String rehearsalKey;
 	/** Why the gilt tile beats where you stand, or null. */
 	private Compare compare;
+	/** The road to Jad being rated for this rotation, one wave at a time, or null. */
+	private Outlook outlook;
+	/** What the outlook is being rated for: "rotation:reach". */
+	private String outlookKey;
 
 	private static final class Sighting
 	{
@@ -265,6 +278,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				break;
 			case LOGIN_SCREEN:
 			case HOPPING:
+				jadExitTick = -1;
 				save();
 				resetCave();
 				inCave = false;
@@ -324,6 +338,20 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onHitsplatApplied(HitsplatApplied event)
+	{
+		if (!inCave || book == null || book.active == null || event.getActor() != client.getLocalPlayer())
+		{
+			return;
+		}
+		if (Damage.counts(event.getHitsplat().getHitsplatType(), event.getHitsplat().getAmount()))
+		{
+			Logbook.hurt(book.active, event.getHitsplat().getAmount());
+			unsaved = true;
+		}
+	}
+
+	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
 		if (event.getContainerId() == InventoryID.INV)
@@ -339,21 +367,27 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		if (!inCave || (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM))
+		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 		{
 			return;
 		}
 		String text = TAGS.matcher(event.getMessage()).replaceAll("");
-		Matcher wave = WAVE.matcher(text);
-		if (wave.find())
+		if (inCave)
 		{
-			onWave(Integer.parseInt(wave.group(1)));
-			return;
+			Matcher wave = WAVE.matcher(text);
+			if (wave.find())
+			{
+				onWave(Integer.parseInt(wave.group(1)));
+				return;
+			}
 		}
-		if (KILL_COUNT.matcher(text).find() && book != null && book.active != null)
+		if (KILL_COUNT.matcher(text).find() && book != null && book.active != null && (inCave || jadExitTick >= 0))
 		{
+			jadExitTick = -1;
 			Logbook.Active a = book.active;
-			a.splits.add(a.ticks - a.waveStartTick);
+			// Jad's own wave is timed like the rest; a missed wave call leaves a gap, not a shift.
+			Logbook.advance(a, Waves.LAST + 1);
+			a.wave = Waves.LAST;
 			Logbook.Run run = book.finish(Logbook.Result.CAPE);
 			unsaved = true;
 			save();
@@ -385,10 +419,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			leaveCave();
 		}
-		else if (!nowInCave && book.active != null)
+		else if (!nowInCave && book.active != null && (jadExitTick < 0 || tick - jadExitTick > CAPE_GRACE))
 		{
-			// Logged in outside the cave with a run still open: it ended while we were away.
+			// Logged in outside the cave with a run still open: it ended while we were away. Or
+			// you walked out on Jad and no cape message came.
 			book.finish(Logbook.Result.LEFT);
+			jadExitTick = -1;
 			unsaved = true;
 		}
 		inCave = nowInCave;
@@ -404,6 +440,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				book.active.ticks++;
 			}
 			trackPrayer();
+			// A fall that the death event missed still shows as hitpoints dropping to nothing. Only
+			// a drop counts: just after logging in the levels can read 0 before they arrive.
+			int hp = client.getBoostedSkillLevel(Skill.HITPOINTS);
+			if (book.active != null && lastHp > 0 && hp <= 0 && client.getRealSkillLevel(Skill.HITPOINTS) > 0)
+			{
+				died = true;
+			}
+			lastHp = hp;
 			if (pendingWave > 0 && readyToRead())
 			{
 				readWave();
@@ -413,6 +457,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				pruneSightings();
 			}
 			plan();
+			if (tick % PLAN_TICKS != 0)
+			{
+				// Off the planning ticks, rate one more wave of the road to Jad.
+				stepOutlook();
+			}
 		}
 		if (tick % SAVE_TICKS == 0)
 		{
@@ -423,21 +472,21 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	// The cave.
 
+	/**
+	 * True when you stand in the cave. Your own tile is read back to the cave's template, not the
+	 * loaded map squares: the cave's square sits just south of TzHaar City on the world map, so
+	 * walking the city's south side loads it without you being anywhere near a wave.
+	 */
 	private boolean isInCave()
 	{
-		WorldView wv = client.getTopLevelWorldView();
-		if (wv == null || wv.getMapRegions() == null)
+		Player me = client.getLocalPlayer();
+		LocalPoint lp = me == null ? null : me.getLocalLocation();
+		if (lp == null)
 		{
 			return false;
 		}
-		for (int region : wv.getMapRegions())
-		{
-			if (region == FIGHT_CAVE_REGION)
-			{
-				return true;
-			}
-		}
-		return false;
+		WorldPoint p = WorldPoint.fromLocalInstance(client, lp);
+		return p != null && p.getRegionID() == FIGHT_CAVE_REGION;
 	}
 
 	private void enterCave()
@@ -466,7 +515,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private void leaveCave()
 	{
-		if (book.active != null)
+		if (book.active != null && book.active.wave == Waves.JAD && !died)
+		{
+			// Killing Jad moves you out of the cave, and the kill count can arrive a tick later.
+			jadExitTick = tick;
+		}
+		else if (book.active != null)
 		{
 			book.finish(died ? Logbook.Result.DIED : Logbook.Result.LEFT);
 			unsaved = true;
@@ -484,6 +538,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		pendingWave = 0;
 		died = false;
 		lastPrayer = -1;
+		lastHp = -1;
 		waveSpent = 0;
 		warnedShort = false;
 		liveSpot = null;
@@ -495,6 +550,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		call = null;
 		order = java.util.Collections.emptyList();
 		floor = null;
+		outlook = null;
 		clearRehearsal();
 		compare = null;
 		caveOverlay.show(Marks.NONE);
@@ -590,6 +646,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			return;
 		}
+		if (wave < 1 || wave > Waves.LAST)
+		{
+			return;
+		}
 		Logbook.Active a = book.active;
 		if (a != null && (wave < a.wave || wave == 1 && a.wave > 1))
 		{
@@ -599,21 +659,23 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 		if (a == null)
 		{
-			a = new Logbook.Active();
-			a.startedAt = System.currentTimeMillis();
-			book.active = a;
+			// Past wave 1 this is a run picked up part way: plugin turned on mid-run, or a run
+			// from another computer. Its earlier waves stay untimed so the splits still line up.
+			book.begin(wave, System.currentTimeMillis());
 			tracker.reset();
+			outlook = null;
 			warnedShort = false;
 		}
-		else if (wave == a.wave + 1)
+		else
 		{
-			a.splits.add(a.ticks - a.waveStartTick);
-			pacer.learn(a.wave, waveSpent);
-			book.prayerSpent = pacer.getSpent();
-			book.prayerHitpoints = pacer.getHitpoints();
+			int was = a.wave;
+			if (Logbook.advance(a, wave))
+			{
+				pacer.learn(was, waveSpent);
+				book.prayerSpent = pacer.getSpent();
+				book.prayerHitpoints = pacer.getHitpoints();
+			}
 		}
-		a.wave = wave;
-		a.waveStartTick = a.ticks;
 		waveSpent = 0;
 		pendingWave = wave;
 		pendingTick = tick;
@@ -724,7 +786,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		for (int i = 0; i < found.size(); i++)
 		{
-			CaveMap.learn(book.anchors, spawns.get(i), centres.get(i)[0], centres.get(i)[1]);
+			CaveMap.learn(book.anchors, spawns.get(i), found.get(i).monster.getSize(), centres.get(i)[0], centres.get(i)[1]);
 		}
 		List<Placement> table = book.placements(rotation, wave);
 		List<String> seen = new ArrayList<>();
@@ -764,6 +826,89 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			caveMap = new CaveMap(book.anchors);
 		}
+	}
+
+	// The road to Jad.
+
+	/**
+	 * Rates one more wave of your rotation, from the wave after the one on now. The outlook is
+	 * started over when the rotation or your weapon's reach changes, and saved once it reaches
+	 * the last wave before Jad, so the Waves page can show it outside the cave.
+	 */
+	private void stepOutlook()
+	{
+		int rotation = tracker.rotation();
+		Player me = client.getLocalPlayer();
+		if (!config.outlook() || rotation == 0 || grid == null || caveMap == null || book.active == null
+			|| me == null || me.getLocalLocation() == null)
+		{
+			return;
+		}
+		String key = rotation + ":" + weaponRange;
+		if (outlook == null || !key.equals(outlookKey))
+		{
+			outlookKey = key;
+			outlook = new Outlook(book.outlooks.get(key), book.active.wave + 1,
+				me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY());
+		}
+		if (outlook.done())
+		{
+			return;
+		}
+		outlook.step(grid, w -> spawnFoes(rotation, w), weaponRange);
+		if (outlook.done())
+		{
+			book.outlooks.put(key, outlook.encode());
+			unsaved = true;
+		}
+	}
+
+	/** A wave's creatures on their spawn tiles, in this copy of the cave's scene tiles. */
+	private List<StandPlanner.Foe> spawnFoes(int rotation, int wave)
+	{
+		List<StandPlanner.Foe> list = new ArrayList<>();
+		for (Placement p : book.placements(rotation, wave))
+		{
+			int[] t = caveMap.tile(p.getSpawn(), p.getMonster().getSize());
+			int[] s = scene(t[0], t[1]);
+			if (s == null)
+			{
+				return java.util.Collections.emptyList();
+			}
+			list.add(new StandPlanner.Foe(p.getMonster(), s[0], s[1]));
+		}
+		return list;
+	}
+
+	/** The road to Jad for your rotation: this visit's when there is one, otherwise the saved one. */
+	private String outlookCodes(int rotation)
+	{
+		if (rotation <= 0)
+		{
+			return null;
+		}
+		if (outlook != null && (rotation + ":" + weaponRange).equals(outlookKey))
+		{
+			return outlook.encode();
+		}
+		return Outlook.saved(book.outlooks, rotation, weaponRange);
+	}
+
+	/** Why the next split wave (or, with none left, the next pray wave) is hard, from this visit's plan. */
+	private String outlookReason(int wave)
+	{
+		Outlook o = outlook;
+		if (o == null)
+		{
+			return null;
+		}
+		String codes = o.encode();
+		int next = Outlook.nextAtLeast(codes, wave, Outlook.Rating.SPLIT);
+		if (next == 0)
+		{
+			next = Outlook.nextAtLeast(codes, wave, Outlook.Rating.PRAY);
+		}
+		return next == 0 ? null : o.reason(next);
 	}
 
 	// Prayer.
@@ -906,7 +1051,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			List<StandPlanner.Foe> next = new ArrayList<>();
 			for (Placement p : book.placements(rotation, wave + 1))
 			{
-				int[] t = caveMap.tile(p.getSpawn());
+				int[] t = caveMap.tile(p.getSpawn(), p.getMonster().getSize());
 				int[] s = scene(t[0], t[1]);
 				if (s != null)
 				{
@@ -1161,8 +1306,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (!inCave)
 		{
 			PrayerPacer.Pace full = pacer.pace(1, level, level, 0, 0, config.jadDoses());
+			PrayerPacer.Pace carried = prayerDoses + restoreDoses > 0
+				? pacer.pace(1, level, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
 			return new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, prayer, level,
-				pacer.learned(), full.getDosesNeeded(), 0, null, copy(book));
+				pacer.learned(), full.getDosesNeeded(), 0, null, copy(book)).withCarried(carried);
 		}
 		Logbook.Active a = book.active;
 		int wave = a == null ? 0 : a.wave;
@@ -1202,7 +1349,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			you = fraction(me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY());
 		}
 		// Raced against your best cape at the end of the last wave cleared.
-		Integer versus = a != null && wave > 1 ? Splits.versusPb(book.runs, wave - 1, a.waveStartTick) : null;
+		Integer versus = a != null && wave > 1 ? Splits.versusPb(book.runs, wave - 1, a.waveStartTick, a.partial) : null;
 		int[] youTile = me != null && me.getLocalLocation() != null && grid != null
 			? caveLocal(new int[]{me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY()}) : null;
 		int rotation = tracker.rotation();
@@ -1212,7 +1359,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			.withObserved(observed).withFight(callView(), killsView())
 			.withRehearsal(config.rehearse() ? rehearsalCave : null, floor, youTile)
 			.withCompare(compare)
-			.withSplits(a == null ? null : Splits.recent(book.runs, a.splits, 3));
+			.withSplits(a == null ? null : Splits.recent(book.runs, a.splits, 3))
+			.withPartial(a != null && a.partial)
+			.withOutlook(config.outlook() ? outlookCodes(rotation) : null, config.outlook() ? outlookReason(wave) : null);
 	}
 
 	private View.Call callView()
@@ -1300,6 +1449,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			k.append(spot.getX()).append(',').append(spot.getY()).append(spot == nextSpot);
 		}
 		k.append('r').append(rehearsalKey);
+		Outlook o = outlook;
+		if (o != null)
+		{
+			// While waves are still being rated, redraw every few of them rather than every one.
+			k.append('o').append(o.done() ? o.encode() : String.valueOf(o.rated() / 6));
+		}
 		Compare cmp = compare;
 		if (cmp != null)
 		{

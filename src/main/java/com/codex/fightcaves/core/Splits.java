@@ -176,7 +176,7 @@ public final class Splits
 		Logbook.Run best = null;
 		for (Logbook.Run r : runs)
 		{
-			if (r.result == Logbook.Result.CAPE && r.splits != null && r.splits.size() >= Waves.LAST
+			if (r.result == Logbook.Result.CAPE && !r.partial && span(r, 1, Waves.LAST) > 0
 				&& (best == null || r.ticks < best.ticks))
 			{
 				best = r;
@@ -207,7 +207,7 @@ public final class Splits
 		return gold;
 	}
 
-	/** Ticks a run spent on waves from..to, or 0 when it did not clear them all. */
+	/** Ticks a run spent on waves from..to, or 0 when it did not clear them all or one went untimed. */
 	static int span(Logbook.Run run, int from, int to)
 	{
 		if (run == null || run.splits == null || run.splits.size() < to)
@@ -217,7 +217,12 @@ public final class Splits
 		int sum = 0;
 		for (int w = from; w <= to; w++)
 		{
-			sum += run.splits.get(w - 1);
+			int t = run.splits.get(w - 1);
+			if (t <= 0)
+			{
+				return 0;
+			}
+			sum += t;
 		}
 		return sum;
 	}
@@ -242,11 +247,17 @@ public final class Splits
 	 *
 	 * @param cleared the waves the run has cleared
 	 * @param ticks the run's time when it cleared them
+	 * @param partial whether the run was picked up part way, so its clock missed some waves
 	 */
-	public static Integer versusPb(List<Logbook.Run> runs, int cleared, int ticks)
+	public static Integer versusPb(List<Logbook.Run> runs, int cleared, int ticks, boolean partial)
 	{
 		Logbook.Run pb = personalBest(runs);
 		if (pb == null || cleared < 1 || cleared > pb.splits.size())
+		{
+			return null;
+		}
+		// The run's clock only means something against the cape if it saw every wave so far.
+		if (partial)
 		{
 			return null;
 		}
@@ -264,6 +275,11 @@ public final class Splits
 		for (int i = Math.max(0, splits.size() - count); i < splits.size(); i++)
 		{
 			int t = splits.get(i);
+			if (t <= 0)
+			{
+				// Untimed: the run was picked up part way, or a wave call was missed.
+				continue;
+			}
 			int delta = pb != null && i < pb.splits.size() ? t - pb.splits.get(i) : Integer.MIN_VALUE;
 			list.add(new int[]{i + 1, t, delta});
 		}

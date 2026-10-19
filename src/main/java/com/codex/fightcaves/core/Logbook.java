@@ -32,8 +32,14 @@ public final class Logbook
 		public int ticks;
 		public long endedAt;
 		public int dosesUsed;
-		/** Ticks each wave took, wave 1 first. */
+		/** Ticks each wave took, wave 1 first; 0 for a wave that was not timed. */
 		public List<Integer> splits = new ArrayList<>();
+		/** Damage you took on each wave, wave 1 first. */
+		public List<Integer> hurt = new ArrayList<>();
+		/** True when the run was not watched from wave 1 or a wave went unseen, so its time is not a record. */
+		public boolean partial;
+		/** The first wave the pilot saw, 0 or 1 for a run watched from the start. */
+		public int firstWave;
 
 		public long millis()
 		{
@@ -50,7 +56,14 @@ public final class Logbook
 		public int waveStartTick;
 		public long startedAt;
 		public int dosesUsed;
+		/** Ticks each wave took, wave 1 first; 0 for a wave that was not timed. */
 		public List<Integer> splits = new ArrayList<>();
+		/** Damage you took on each wave so far, wave 1 first, the wave on now included. */
+		public List<Integer> hurt = new ArrayList<>();
+		/** True once the run has a wave the pilot did not see from start to end. */
+		public boolean partial;
+		/** The first wave the pilot saw, 0 or 1 for a run watched from the start. */
+		public int firstWave;
 		/** Spawn codes seen per wave, so a resumed run can rebuild its rotation. */
 		public Map<Integer, List<String>> seen = new HashMap<>();
 	}
@@ -70,6 +83,8 @@ public final class Logbook
 	public Map<String, List<String>> corrections = new HashMap<>();
 	/** Runs per rotation, rotations 1 to 15. */
 	public int[] rotations = new int[Rotations.COUNT + 1];
+	/** "rotation:reach" to the road to Jad worked out for it, one letter per wave (see {@link Outlook}). */
+	public Map<String, String> outlooks = new HashMap<>();
 
 	/** Fills in anything an older save left out. */
 	public Logbook repair()
@@ -94,6 +109,21 @@ public final class Logbook
 		{
 			rotations = new int[Rotations.COUNT + 1];
 		}
+		if (outlooks == null)
+		{
+			outlooks = new HashMap<>();
+		}
+		for (Run r : runs)
+		{
+			if (r.splits == null)
+			{
+				r.splits = new ArrayList<>();
+			}
+			if (r.hurt == null)
+			{
+				r.hurt = new ArrayList<>();
+			}
+		}
 		if (prayerHitpoints <= 0)
 		{
 			prayerSpent = PrayerPacer.PRIOR_RATE * PrayerPacer.PRIOR_WEIGHT;
@@ -108,6 +138,10 @@ public final class Logbook
 			if (active.seen == null)
 			{
 				active.seen = new HashMap<>();
+			}
+			if (active.hurt == null)
+			{
+				active.hurt = new ArrayList<>();
 			}
 		}
 		return this;
@@ -128,6 +162,9 @@ public final class Logbook
 		run.endedAt = System.currentTimeMillis();
 		run.dosesUsed = active.dosesUsed;
 		run.splits = new ArrayList<>(active.splits);
+		run.hurt = new ArrayList<>(active.hurt);
+		run.partial = active.partial;
+		run.firstWave = active.firstWave;
 		runs.add(run);
 		// Drop the oldest runs, but never your best cape: the splits race it.
 		Run pb = Splits.personalBest(runs);
@@ -147,7 +184,8 @@ public final class Logbook
 		if (result == Result.CAPE)
 		{
 			capes++;
-			if (bestTicks == 0 || active.ticks < bestTicks)
+			// A run picked up part way through would claim a time it never took.
+			if (!active.partial && (bestTicks == 0 || active.ticks < bestTicks))
 			{
 				bestTicks = active.ticks;
 			}
@@ -162,6 +200,80 @@ public final class Logbook
 		}
 		active = null;
 		return run;
+	}
+
+	/**
+	 * Starts a run at the wave just called. A run first seen past wave 1 (the plugin turned on
+	 * part way, or a run carried over from another computer) is marked partial, with untimed
+	 * waves before it, so its splits still line up with their waves.
+	 */
+	public Active begin(int wave, long now)
+	{
+		Active a = new Active();
+		a.startedAt = now;
+		a.wave = wave;
+		a.firstWave = Math.max(1, wave);
+		for (int w = 1; w < wave; w++)
+		{
+			a.splits.add(0);
+			a.hurt.add(0);
+		}
+		a.partial = wave > 1;
+		active = a;
+		return a;
+	}
+
+	/**
+	 * Moves the run on to the wave just called: the wave before is timed, and waves skipped
+	 * (a wave message missed) are left untimed and the run marked partial. Calling the same
+	 * wave again, as the game does when you log back in, restarts its clock.
+	 *
+	 * @return true when a wave was cleared
+	 */
+	public static boolean advance(Active a, int wave)
+	{
+		boolean cleared = false;
+		if (wave == a.wave + 1)
+		{
+			setAt(a.splits, a.wave, a.ticks - a.waveStartTick);
+			cleared = true;
+		}
+		else if (wave > a.wave + 1)
+		{
+			// The time since the last call covers more than one wave, so none of them is timed.
+			for (int w = a.wave; w < wave; w++)
+			{
+				setAt(a.splits, w, 0);
+			}
+			a.partial = true;
+		}
+		a.wave = wave;
+		a.waveStartTick = a.ticks;
+		return cleared;
+	}
+
+	/** Adds damage taken to the wave on now. */
+	public static void hurt(Active a, int damage)
+	{
+		if (a.wave < 1 || a.wave > Waves.LAST || damage <= 0)
+		{
+			return;
+		}
+		while (a.hurt.size() < a.wave)
+		{
+			a.hurt.add(0);
+		}
+		a.hurt.set(a.wave - 1, a.hurt.get(a.wave - 1) + damage);
+	}
+
+	/** Sets wave w's entry in a per-wave list, filling any gap before it with zeros. */
+	public static void setAt(List<Integer> list, int w, int value)
+	{
+		while (list.size() < w)
+		{
+			list.add(0);
+		}
+		list.set(w - 1, value);
 	}
 
 	/** The spawns a wave uses in a rotation: what was seen there before, otherwise the table. */
