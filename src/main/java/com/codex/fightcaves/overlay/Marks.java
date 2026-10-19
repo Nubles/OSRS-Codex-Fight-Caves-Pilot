@@ -44,6 +44,8 @@ public final class Marks
 		}
 	}
 
+	/** The next wave's rehearsal, in scene tiles, drawn as each creature's walk on the floor, or null. */
+	final com.codex.fightcaves.core.Rehearsal rehearsal;
 	final Stand stand;
 	final List<Ghost> ghosts;
 	final List<NPC> stuck;
@@ -52,6 +54,12 @@ public final class Marks
 
 	public Marks(Stand stand, List<Ghost> ghosts, List<NPC> stuck, Map<NPC, Integer> ranks)
 	{
+		this(stand, ghosts, stuck, ranks, null);
+	}
+
+	public Marks(Stand stand, List<Ghost> ghosts, List<NPC> stuck, Map<NPC, Integer> ranks, com.codex.fightcaves.core.Rehearsal rehearsal)
+	{
+		this.rehearsal = rehearsal;
 		this.stand = stand;
 		this.ghosts = ghosts;
 		this.stuck = stuck;

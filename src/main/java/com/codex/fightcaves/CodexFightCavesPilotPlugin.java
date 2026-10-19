@@ -1,18 +1,29 @@
 package com.codex.fightcaves;
 
+import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.Chase;
+import com.codex.fightcaves.core.Compare;
+import com.codex.fightcaves.core.Damage;
+import com.codex.fightcaves.core.EarlyCall;
+import com.codex.fightcaves.core.Fall;
 import com.codex.fightcaves.core.Grid;
 import com.codex.fightcaves.core.KillOrder;
 import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Monster;
+import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerCall;
 import com.codex.fightcaves.core.PrayerPacer;
+import com.codex.fightcaves.core.Presence;
+import com.codex.fightcaves.core.Rehearsal;
 import com.codex.fightcaves.core.Protect;
+import com.codex.fightcaves.core.Ready;
 import com.codex.fightcaves.core.RotationTracker;
 import com.codex.fightcaves.core.Spawn;
+import com.codex.fightcaves.core.Splits;
 import com.codex.fightcaves.core.StandPlanner;
+import com.codex.fightcaves.core.Threat;
 import com.codex.fightcaves.core.Waves;
 import com.codex.fightcaves.core.WeaponRange;
 import com.codex.fightcaves.overlay.CaveOverlay;
@@ -24,7 +35,6 @@ import com.codex.fightcaves.ui.Sigil;
 import com.codex.fightcaves.ui.Theme;
 import com.codex.fightcaves.ui.View;
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -33,6 +43,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -54,6 +65,7 @@ import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
@@ -66,6 +78,7 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
@@ -80,13 +93,17 @@ import org.slf4j.LoggerFactory;
 @PluginDescriptor(
 	name = "Codex Fight Caves Pilot",
 	description = "Reads your Fight Cave rotation from the first spawns, marks where to stand for each wave and paces your prayer potions against the waves left",
-	tags = {"fight caves", "fight cave", "tzhaar", "jad", "fire cape", "rotation", "waves", "safespot", "prayer", "codex"}
+	tags = {"fight caves", "fight cave", "tzhaar", "fire cape", "rotation", "waves", "safespot", "prayer", "splits", "codex"}
 )
 public class CodexFightCavesPilotPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexFightCavesPilotPlugin.class);
 	static final int FIGHT_CAVE_REGION = 9551;
 	private static final String LOGBOOK_KEY = "logbook";
+	/** Where a save this version could not keep whole is put aside, once, before it is overwritten. */
+	private static final String BACKUP_KEY = "logbookBackup";
+	/** Past this a save is far bigger than any the pilot writes, and is not copied aside. */
+	private static final int BACKUP_MAX = 1_000_000;
 	private static final Pattern WAVE = Pattern.compile("Wave: (\\d+)");
 	private static final Pattern KILL_COUNT = Pattern.compile("Your TzTok-Jad kill count is");
 	private static final Pattern TAGS = Pattern.compile("<[^>]*>");
@@ -96,6 +113,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private static final int SAVE_TICKS = 100;
 	/** Ticks between re-working where to stand while a wave is on. */
 	private static final int PLAN_TICKS = 2;
+	/** Ticks to wait, after leaving the cave on the Jad wave, for the kill count that says it was a cape. */
+	private static final int CAPE_GRACE = 10;
 	/** How much safer a new tile has to be before the gilt tile moves, so it does not flicker. */
 	private static final double MOVE_MARGIN = 0.8;
 
@@ -121,6 +140,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private ChatMessageManager chatMessageManager;
 
 	@Inject
+	private ScheduledExecutorService executor;
+
+	@Inject
 	private Gson gson;
 
 	@Inject
@@ -131,6 +153,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private final PilotPlaque plaque = new PilotPlaque();
 	private final RotationTracker tracker = new RotationTracker();
+	private final Presence presence = new Presence();
+	/** A wave call heard on the tick you were moved in, before your tile said so. */
+	private final EarlyCall earlyCall = new EarlyCall();
+	/** The last ten seconds or so of the wave on now, for the review if you fall. */
+	private final Fall fall = new Fall();
+	/** Damage taken since the last tick was filed. */
+	private int tickDamage;
+	/** What could land on you at once past your prayer when it is enough to kill you, else 0. */
+	private int danger;
 	/** Creatures that appeared recently, waiting to be matched to a wave. */
 	private final List<Sighting> sightings = new ArrayList<>();
 	/** The creatures of the wave on now, for re-working where to stand. */
@@ -145,6 +176,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private Logbook book;
 	private PrayerPacer pacer = new PrayerPacer();
 	private boolean unsaved;
+	/** Counts logbook loads, so a slow read that an account switch or shutdown overtook is dropped. */
+	private int loadGeneration;
 
 	private boolean inCave;
 	private Grid grid;
@@ -153,6 +186,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private int pendingWave;
 	private int pendingTick;
 	private boolean died;
+	/** Hitpoints on the last tick in the cave, or -1 before the first. */
+	private int lastHp = -1;
+	/** The tick you left the cave on the Jad wave without falling, or -1: the cape message may follow. */
+	private int jadExitTick = -1;
 	private int lastPrayer = -1;
 	private int waveSpent;
 	private int prayerDoses;
@@ -169,6 +206,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	/** Weapon item id to how far it attacks from. */
 	private final Map<Integer, Integer> rangeCache = new HashMap<>();
 	private int weaponRange = WeaponRange.DEFAULT;
+	/** What you wield, by name, or null; and the ammunition in your quiver. */
+	private String weaponName;
+	private int ammo;
+	/** Pieces of food carried, and item id to whether it is food. */
+	private int foodCount;
+	private final Map<Integer, Boolean> foodCache = new HashMap<>();
+	/** Bank Steward's shared bank as last read, parsed again only when it changes. */
+	private String stewardJson;
+	private Banked stewardBank;
 	private PrayerCall call;
 	private List<KillOrder.Target> order = java.util.Collections.emptyList();
 
@@ -176,6 +222,20 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private StandPlanner.Spot nextSpot;
 	private int nextSpotWave;
 	private String lastViewKey;
+
+	/** Walkable tiles of the cave's map square, [x][y], read once per copy of the cave. */
+	private boolean[][] floor;
+	/** The next wave played out in scene tiles, for the floor, and in the cave's own tiles, for the panel. */
+	private Rehearsal rehearsal;
+	private Rehearsal rehearsalCave;
+	/** What the rehearsal was worked out for, so it is only redone when the wave or the tile changes. */
+	private String rehearsalKey;
+	/** Why the gilt tile beats where you stand, or null. */
+	private Compare compare;
+	/** The road to Jad being rated for this rotation, one wave at a time, or null. */
+	private Outlook outlook;
+	/** What the outlook is being rated for: "rotation:reach". */
+	private String outlookKey;
 
 	private static final class Sighting
 	{
@@ -201,6 +261,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	protected void startUp()
 	{
 		panel = new PilotPanel();
+		// The panel is only rebuilt while it is open, so bring it up to date as it opens.
+		panel.onOpen(() -> clientThread.invokeLater(() -> publish(true)));
 		navButton = NavigationButton.builder()
 			.tooltip("Codex Fight Caves Pilot")
 			.icon(Sigil.icon(16))
@@ -231,10 +293,13 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			save();
+			// A logbook still being read off the client thread must not come back after this.
+			loadGeneration++;
 			book = null;
 			profile = null;
 			resetCave();
 			inCave = false;
+			presence.reset();
 		});
 		panel = null;
 	}
@@ -247,18 +312,49 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		switch (event.getGameState())
 		{
 			case LOADING:
-				// A fresh copy of the cave means fresh collision data.
+				// A fresh copy of the cave means fresh collision data, and fresh scene tiles for
+				// the road to Jad to start from.
 				grid = null;
+				outlook = null;
 				break;
 			case LOGIN_SCREEN:
 			case HOPPING:
+				jadExitTick = -1;
+				// The next account, or this one after playing elsewhere, may carry something else:
+				// the first inventory seen after logging in is the new base, not doses drunk.
+				lastDoses = -1;
+				// Nor is what the last account carried and wielded: the game may send nothing for
+				// an empty pack or empty hands, so the ready check would read the old ones.
+				prayerDoses = 0;
+				restoreDoses = 0;
+				foodCount = 0;
+				weaponName = null;
+				weaponRange = 1;
+				ammo = 0;
+				earlyCall.clear();
 				save();
 				resetCave();
 				inCave = false;
+				presence.reset();
 				publish(true);
 				break;
 			default:
 				break;
+		}
+	}
+
+	@Subscribe
+	public void onClientShutdown(ClientShutdown event)
+	{
+		// The logbook is otherwise saved once a minute; closing the client must not lose the
+		// last of a run. Saved here, before RuneLite sends its config on.
+		try
+		{
+			save();
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("Could not save the logbook on shutdown", e);
 		}
 	}
 
@@ -273,7 +369,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()))
+		// The logbook itself is saved under the same group; its own saves need no redraw.
+		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup())
+			&& !LOGBOOK_KEY.equals(event.getKey()) && !BACKUP_KEY.equals(event.getKey());
+		boolean steward = Banked.STEWARD_GROUP.equals(event.getGroup()) && Banked.STEWARD_KEY.equals(event.getKey());
+		if (ours || steward)
 		{
 			clientThread.invokeLater(() -> publish(true));
 		}
@@ -282,13 +382,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onNpcSpawned(NpcSpawned event)
 	{
-		if (!inCave)
-		{
-			return;
-		}
+		// Kept even before you are seen inside: on the tick you are moved in, the first spawns
+		// can come before your tile does. Only the cave's own creatures are kept, and only for
+		// a few ticks unless a wave call claims them.
 		NPC npc = event.getNpc();
 		Monster m = Monster.of(npc.getName(), npc.getCombatLevel());
-		if (m != null)
+		if (m != null && book != null)
 		{
 			sightings.add(new Sighting(npc, m, tick));
 		}
@@ -311,11 +410,30 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onHitsplatApplied(HitsplatApplied event)
+	{
+		if (!inCave || book == null || book.active == null || event.getActor() != client.getLocalPlayer())
+		{
+			return;
+		}
+		if (Damage.counts(event.getHitsplat().getHitsplatType(), event.getHitsplat().getAmount()))
+		{
+			Logbook.hurt(book.active, event.getHitsplat().getAmount());
+			tickDamage += event.getHitsplat().getAmount();
+			unsaved = true;
+		}
+	}
+
+	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
 		if (event.getContainerId() == InventoryID.INV)
 		{
 			countDoses(event.getItemContainer());
+		}
+		else if (event.getContainerId() == InventoryID.BANK)
+		{
+			seeBank(event.getItemContainer());
 		}
 		else if (event.getContainerId() == InventoryID.WORN)
 		{
@@ -326,21 +444,32 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		if (!inCave || (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM))
+		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 		{
 			return;
 		}
 		String text = TAGS.matcher(event.getMessage()).replaceAll("");
 		Matcher wave = WAVE.matcher(text);
-		if (wave.find())
+		if (wave.find() && book != null)
 		{
-			onWave(Integer.parseInt(wave.group(1)));
+			if (inCave || arriveNow())
+			{
+				onWave(Integer.parseInt(wave.group(1)));
+			}
+			else
+			{
+				// Possibly the cave's first call, sent before your new tile could be read.
+				earlyCall.hear(Integer.parseInt(wave.group(1)), tick);
+			}
 			return;
 		}
-		if (KILL_COUNT.matcher(text).find() && book != null && book.active != null)
+		if (KILL_COUNT.matcher(text).find() && book != null && book.active != null && (inCave || jadExitTick >= 0))
 		{
+			jadExitTick = -1;
 			Logbook.Active a = book.active;
-			a.splits.add(a.ticks - a.waveStartTick);
+			// Jad's own wave is timed like the rest; a missed wave call leaves a gap, not a shift.
+			Logbook.advance(a, Waves.LAST + 1);
+			a.wave = Waves.LAST;
 			Logbook.Run run = book.finish(Logbook.Result.CAPE);
 			unsaved = true;
 			save();
@@ -363,24 +492,37 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		tick++;
-		boolean nowInCave = isInCave();
-		if (nowInCave && !inCave)
+		Player me = client.getLocalPlayer();
+		boolean known = me != null && me.getLocalLocation() != null;
+		// Physically in the cave this tick; a lone odd tick does not end the run (see Presence).
+		boolean here = known && isInCave();
+		Presence.Change change = presence.tick(known, here);
+		if (change == Presence.Change.ENTERED)
 		{
 			enterCave();
+			inCave = true;
+			int early = earlyCall.take(tick);
+			if (early > 0)
+			{
+				onWave(early);
+			}
 		}
-		else if (!nowInCave && inCave)
+		else if (change == Presence.Change.LEFT)
 		{
 			leaveCave();
 		}
-		else if (!nowInCave && book.active != null)
+		else if (!presence.isInside() && book.active != null && presence.outsideFor() >= Presence.SETTLE_TICKS
+			&& (jadExitTick < 0 || tick - jadExitTick > CAPE_GRACE))
 		{
-			// Logged in outside the cave with a run still open: it ended while we were away.
+			// Logged in outside the cave with a run still open: it ended while we were away. Or
+			// you walked out on Jad and no cape message came.
 			book.finish(Logbook.Result.LEFT);
+			jadExitTick = -1;
 			unsaved = true;
 		}
-		inCave = nowInCave;
+		inCave = presence.isInside();
 
-		if (inCave)
+		if (inCave && here)
 		{
 			if (grid == null)
 			{
@@ -391,6 +533,23 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				book.active.ticks++;
 			}
 			trackPrayer();
+			// A fall that the death event missed still shows as hitpoints dropping to nothing. Only
+			// a drop counts: just after logging in the levels can read 0 before they arrive.
+			int hp = client.getBoostedSkillLevel(Skill.HITPOINTS);
+			if (book.active != null && lastHp > 0 && hp <= 0 && client.getRealSkillLevel(Skill.HITPOINTS) > 0)
+			{
+				died = true;
+			}
+			lastHp = hp;
+			if ((book.active == null || book.active.wave < Waves.JAD) && jadOnFloor() && book.jadSeen(System.currentTimeMillis()))
+			{
+				// Jad or a healer is out but the wave call was missed, or no run was open at all (the
+				// plugin turned on, or a run carried on elsewhere): it is the Jad wave, and nothing
+				// may be offered on it.
+				waveSpent = 0;
+				unsaved = true;
+				jadWave();
+			}
 			if (pendingWave > 0 && readyToRead())
 			{
 				readWave();
@@ -400,6 +559,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				pruneSightings();
 			}
 			plan();
+			if (tick % PLAN_TICKS != 0)
+			{
+				// Off the planning ticks, rate one more wave of the road to Jad.
+				stepOutlook();
+			}
+		}
+		else if (!inCave)
+		{
+			pruneSightings();
 		}
 		if (tick % SAVE_TICKS == 0)
 		{
@@ -410,26 +578,45 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	// The cave.
 
+	/**
+	 * True when you stand in the cave. Your own tile is read back to the cave's template, not the
+	 * loaded map squares: the cave's square sits just south of TzHaar City on the world map, so
+	 * walking the city's south side loads it without you being anywhere near a wave.
+	 */
 	private boolean isInCave()
 	{
-		WorldView wv = client.getTopLevelWorldView();
-		if (wv == null || wv.getMapRegions() == null)
+		Player me = client.getLocalPlayer();
+		LocalPoint lp = me == null ? null : me.getLocalLocation();
+		if (lp == null)
 		{
 			return false;
 		}
-		for (int region : wv.getMapRegions())
+		WorldPoint p = WorldPoint.fromLocalInstance(client, lp);
+		return p != null && p.getRegionID() == FIGHT_CAVE_REGION;
+	}
+
+	/**
+	 * True when you are in the cave by your own tile, though the tick that says so has not come
+	 * yet: entering there and then, so a wave call on that very tick is not lost.
+	 */
+	private boolean arriveNow()
+	{
+		if (book == null || client.getGameState() != GameState.LOGGED_IN || !isInCave() || !presence.enterNow())
 		{
-			if (region == FIGHT_CAVE_REGION)
-			{
-				return true;
-			}
+			return false;
 		}
-		return false;
+		enterCave();
+		inCave = true;
+		earlyCall.clear();
+		return true;
 	}
 
 	private void enterCave()
 	{
+		// Creatures seen in the moment before you were placed belong to the wave about to be called.
+		List<Sighting> early = new ArrayList<>(sightings);
 		resetCave();
+		sightings.addAll(early);
 		tracker.reset();
 		Logbook.Active a = book.active;
 		if (a != null)
@@ -453,13 +640,38 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private void leaveCave()
 	{
-		if (book.active != null)
+		if (book.active != null && book.active.wave == Waves.JAD && !died)
 		{
-			book.finish(died ? Logbook.Result.DIED : Logbook.Result.LEFT);
+			// Killing Jad moves you out of the cave, and the kill count can arrive a tick later.
+			jadExitTick = tick;
+		}
+		else if (book.active != null)
+		{
+			Logbook.Run run = book.finish(died ? Logbook.Result.DIED : Logbook.Result.LEFT);
+			if (died && run != null && run.wave < Waves.JAD)
+			{
+				review(run);
+			}
 			unsaved = true;
 			save();
 		}
 		resetCave();
+	}
+
+	/** Files why a run fell before Jad, from its last few seconds, and says so in the chat. */
+	private void review(Logbook.Run run)
+	{
+		Fall.Review r = fall.review(prayerDoses + restoreDoses);
+		if (r == null)
+		{
+			return;
+		}
+		run.fall = r.getText();
+		run.fallHp = r.getHp();
+		if (config.chat())
+		{
+			chat("fell on wave " + run.wave + ". " + r.getText());
+		}
 	}
 
 	private void resetCave()
@@ -471,6 +683,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		pendingWave = 0;
 		died = false;
 		lastPrayer = -1;
+		lastHp = -1;
 		waveSpent = 0;
 		warnedShort = false;
 		liveSpot = null;
@@ -481,7 +694,21 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		health.clear();
 		call = null;
 		order = java.util.Collections.emptyList();
+		floor = null;
+		outlook = null;
+		clearRehearsal();
+		compare = null;
+		fall.clear();
+		tickDamage = 0;
+		danger = 0;
 		caveOverlay.show(Marks.NONE);
+	}
+
+	private void clearRehearsal()
+	{
+		rehearsal = null;
+		rehearsalCave = null;
+		rehearsalKey = null;
 	}
 
 	private void buildGrid()
@@ -495,6 +722,32 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 		grid = new Grid(maps[wv.getPlane()].getFlags());
 		caveMap = new CaveMap(book.anchors);
+		floor = readFloor();
+	}
+
+	/** Which tiles of the cave's map square are open floor, for the panel's map of the cave. */
+	private boolean[][] readFloor()
+	{
+		boolean[][] f = new boolean[64][64];
+		for (int x = 0; x < grid.getWidth(); x++)
+		{
+			for (int y = 0; y < grid.getHeight(); y++)
+			{
+				int[] c = caveLocal(new int[]{x, y});
+				if (c != null && c[0] >= 0 && c[1] >= 0 && c[0] < 64 && c[1] < 64)
+				{
+					f[c[0]][c[1]] = grid.walkable(x, y);
+				}
+			}
+		}
+		return f;
+	}
+
+	/** A scene tile as a tile of the cave's map square, counted from its south-west corner, or null. */
+	private int[] caveLocal(int[] scene)
+	{
+		WorldPoint p = cave(scene[0], scene[1]);
+		return p == null ? null : new int[]{p.getX() - CaveMap.BASE_X, p.getY() - CaveMap.BASE_Y};
 	}
 
 	/** A scene tile in the cave's own coordinates, which stay put from one copy of the cave to the next. */
@@ -541,6 +794,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			return;
 		}
+		if (wave < 1 || wave > Waves.LAST)
+		{
+			return;
+		}
 		Logbook.Active a = book.active;
 		if (a != null && (wave < a.wave || wave == 1 && a.wave > 1))
 		{
@@ -550,27 +807,45 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 		if (a == null)
 		{
-			a = new Logbook.Active();
-			a.startedAt = System.currentTimeMillis();
-			book.active = a;
+			// Past wave 1 this is a run picked up part way: plugin turned on mid-run, or a run
+			// from another computer. Its earlier waves stay untimed so the splits still line up.
+			book.begin(wave, System.currentTimeMillis());
 			tracker.reset();
+			outlook = null;
 			warnedShort = false;
 		}
-		else if (wave == a.wave + 1)
+		else
 		{
-			a.splits.add(a.ticks - a.waveStartTick);
-			pacer.learn(a.wave, waveSpent);
-			book.prayerSpent = pacer.getSpent();
-			book.prayerHitpoints = pacer.getHitpoints();
+			int was = a.wave;
+			if (Logbook.advance(a, wave))
+			{
+				pacer.learn(was, waveSpent);
+				book.prayerSpent = pacer.getSpent();
+				book.prayerHitpoints = pacer.getHitpoints();
+			}
 		}
-		a.wave = wave;
-		a.waveStartTick = a.ticks;
 		waveSpent = 0;
 		pendingWave = wave;
 		pendingTick = tick;
+		// Called between ticks: the panel must know at once, should it be opened before the next one.
+		jadWave();
 		liveSpot = null;
 		waveNpcs.clear();
 		unsaved = true;
+		if (wave >= Waves.JAD)
+		{
+			// Jad's wave is called between ticks: wave 62's tile, seals, prayer call and plaque
+			// would otherwise stay up until the next tick's plan. Take them all down now.
+			nextSpot = null;
+			nextSpotWave = 0;
+			clearRehearsal();
+			compare = null;
+			danger = 0;
+			call = null;
+			order = java.util.Collections.emptyList();
+			caveOverlay.show(Marks.NONE);
+			publish(true);
+		}
 	}
 
 	/** True once every creature of the wave has appeared, or the grace period is over. */
@@ -656,7 +931,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			a.rotation = rotation;
 		}
-		if (rotation > 0 && rotation != before && config.chat())
+		// Not on Jad's wave, where the pilot says nothing at all.
+		if (rotation > 0 && rotation != before && config.chat() && wave < Waves.JAD)
 		{
 			chat("rotation " + rotation + ", read on wave " + wave + ".");
 		}
@@ -675,7 +951,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		for (int i = 0; i < found.size(); i++)
 		{
-			CaveMap.learn(book.anchors, spawns.get(i), centres.get(i)[0], centres.get(i)[1]);
+			CaveMap.learn(book.anchors, spawns.get(i), found.get(i).monster.getSize(), centres.get(i)[0], centres.get(i)[1]);
 		}
 		List<Placement> table = book.placements(rotation, wave);
 		List<String> seen = new ArrayList<>();
@@ -717,6 +993,89 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 	}
 
+	// The road to Jad.
+
+	/**
+	 * Rates one more wave of your rotation, from the wave after the one on now. The outlook is
+	 * started over when the rotation or your weapon's reach changes, and saved once it reaches
+	 * the last wave before Jad, so the Waves page can show it outside the cave.
+	 */
+	private void stepOutlook()
+	{
+		int rotation = tracker.rotation();
+		Player me = client.getLocalPlayer();
+		if (!config.outlook() || rotation == 0 || grid == null || caveMap == null || book.active == null
+			|| me == null || me.getLocalLocation() == null)
+		{
+			return;
+		}
+		String key = rotation + ":" + weaponRange;
+		if (outlook == null || !key.equals(outlookKey))
+		{
+			outlookKey = key;
+			outlook = new Outlook(book.outlooks.get(key), book.active.wave + 1,
+				me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY());
+		}
+		if (outlook.done())
+		{
+			return;
+		}
+		outlook.step(grid, w -> spawnFoes(rotation, w), weaponRange);
+		if (outlook.done())
+		{
+			book.outlooks.put(key, outlook.encode());
+			unsaved = true;
+		}
+	}
+
+	/** A wave's creatures on their spawn tiles, in this copy of the cave's scene tiles. */
+	private List<StandPlanner.Foe> spawnFoes(int rotation, int wave)
+	{
+		List<StandPlanner.Foe> list = new ArrayList<>();
+		for (Placement p : book.placements(rotation, wave))
+		{
+			int[] t = caveMap.tile(p.getSpawn(), p.getMonster().getSize());
+			int[] s = scene(t[0], t[1]);
+			if (s == null)
+			{
+				return java.util.Collections.emptyList();
+			}
+			list.add(new StandPlanner.Foe(p.getMonster(), s[0], s[1]));
+		}
+		return list;
+	}
+
+	/** The road to Jad for your rotation: this visit's when there is one, otherwise the saved one. */
+	private String outlookCodes(int rotation)
+	{
+		if (rotation <= 0)
+		{
+			return null;
+		}
+		if (outlook != null && (rotation + ":" + weaponRange).equals(outlookKey))
+		{
+			return outlook.encode();
+		}
+		return Outlook.saved(book.outlooks, rotation, weaponRange);
+	}
+
+	/** Why the next split wave (or, with none left, the next pray wave) is hard, from this visit's plan. */
+	private String outlookReason(int wave)
+	{
+		Outlook o = outlook;
+		if (o == null)
+		{
+			return null;
+		}
+		String codes = o.encode();
+		int next = Outlook.nextAtLeast(codes, wave, Outlook.Rating.SPLIT);
+		if (next == 0)
+		{
+			next = Outlook.nextAtLeast(codes, wave, Outlook.Rating.PRAY);
+		}
+		return next == 0 ? null : o.reason(next);
+	}
+
 	// Prayer.
 
 	private void trackPrayer()
@@ -733,6 +1092,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		int prayerCount = 0;
 		int restoreCount = 0;
+		int food = 0;
 		if (inventory != null)
 		{
 			for (Item item : inventory.getItems())
@@ -740,6 +1100,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				if (item.getId() <= 0)
 				{
 					continue;
+				}
+				if (foodCache.computeIfAbsent(item.getId(), id -> !noted(id) && Ready.isFood(itemManager.getItemComposition(id).getName())))
+				{
+					food += item.getQuantity();
 				}
 				int[] kind = doseCache.computeIfAbsent(item.getId(), this::doseKind);
 				if (kind[0] == 1)
@@ -761,10 +1125,65 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		lastDoses = total;
 		prayerDoses = prayerCount;
 		restoreDoses = restoreCount;
+		foodCount = food;
+	}
+
+	/** The bank changed while open: count its doses for how many runs it covers. */
+	private void seeBank(ItemContainer bank)
+	{
+		if (bank == null || book == null)
+		{
+			return;
+		}
+		Map<Integer, Long> items = new HashMap<>();
+		for (Item item : bank.getItems())
+		{
+			if (item.getId() > 0 && item.getQuantity() > 0)
+			{
+				items.merge(item.getId(), (long) item.getQuantity(), Long::sum);
+			}
+		}
+		long doses = Banked.count(items);
+		long now = System.currentTimeMillis();
+		// Saved when the count moves, or now and then so "seen" stays honest across restarts.
+		if (doses != book.bankDoses || now - book.bankSeenAt > 10 * 60_000L)
+		{
+			unsaved = true;
+		}
+		book.bankDoses = doses;
+		book.bankSeenAt = now;
+	}
+
+	/** The doses in your bank: the pilot's own look or Bank Steward's, whichever is newer, or null. */
+	private Banked banked()
+	{
+		String json = configManager.getRSProfileConfiguration(Banked.STEWARD_GROUP, Banked.STEWARD_KEY);
+		if (json == null || json.isEmpty())
+		{
+			stewardJson = null;
+			stewardBank = null;
+		}
+		else if (!json.equals(stewardJson))
+		{
+			stewardJson = json;
+			stewardBank = Banked.steward(gson, json);
+		}
+		Banked own = book == null || book.bankDoses < 0 ? null : new Banked(book.bankDoses, book.bankSeenAt, Banked.Source.PILOT);
+		return Banked.newest(own, stewardBank, System.currentTimeMillis());
+	}
+
+	/** True for a banknote: noted sharks or potions carried are not food or doses to drink. */
+	private boolean noted(int itemId)
+	{
+		return itemManager.getItemComposition(itemId).getNote() != -1;
 	}
 
 	private int[] doseKind(int itemId)
 	{
+		if (noted(itemId))
+		{
+			return new int[]{0, 0};
+		}
 		String name = itemManager.getItemComposition(itemId).getName();
 		if (name == null)
 		{
@@ -804,6 +1223,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (grid == null || me == null || me.getLocalLocation() == null || book.active == null)
 		{
 			caveOverlay.show(Marks.NONE);
+			clearRehearsal();
+			compare = null;
+			// Nothing worked out this tick: a warning or call from an earlier one would be stale.
+			danger = 0;
+			call = null;
 			return;
 		}
 		int px = me.getLocalLocation().getSceneX();
@@ -838,12 +1262,28 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				liveSpot = best;
 			}
 		}
-		if (foes.isEmpty())
+		if (foes.isEmpty() || jad)
 		{
+			// On Jad's wave no tile is offered: one left over from the wave before would read as
+			// where to stand against him.
 			liveSpot = null;
 		}
-		// Jad is yours to read: no prayer call and no kill order on his wave.
-		call = !jad && config.prayerCall() ? PrayerCall.of(grid, foes, px, py) : null;
+		// Jad is yours to read: no prayer call, no eat warning and no kill order on his wave.
+		List<Threat> threats = jad ? java.util.Collections.emptyList() : Threat.of(grid, foes, px, py);
+		Protect up = activeProtect();
+		int hp = client.getBoostedSkillLevel(Skill.HITPOINTS);
+		if (jad)
+		{
+			// The last of wave 62 says nothing about a fall to Jad, which is never reviewed.
+			fall.clear();
+		}
+		else
+		{
+			fall.add(new Fall.Frame(hp, client.getBoostedSkillLevel(Skill.PRAYER), up, threats, tickDamage));
+		}
+		tickDamage = 0;
+		danger = !jad && config.eatWarning() ? Threat.danger(threats, up, hp) : 0;
+		call = !jad && config.prayerCall() ? PrayerCall.of(threats) : null;
 		order = !jad && config.killOrder() && foes.size() > 1
 			? KillOrder.rank(grid, foes, px, py, weaponRange, activeProtect()) : java.util.Collections.emptyList();
 
@@ -855,7 +1295,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			List<StandPlanner.Foe> next = new ArrayList<>();
 			for (Placement p : book.placements(rotation, wave + 1))
 			{
-				int[] t = caveMap.tile(p.getSpawn());
+				int[] t = caveMap.tile(p.getSpawn(), p.getMonster().getSize());
 				int[] s = scene(t[0], t[1]);
 				if (s != null)
 				{
@@ -868,15 +1308,19 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				nextSpot = StandPlanner.plan(grid, next, px, py, weaponRange);
 				nextSpotWave = wave + 1;
 			}
+			rehearse(next, wave + 1, px, py);
 		}
 		else
 		{
 			nextSpot = null;
 			nextSpotWave = 0;
+			clearRehearsal();
 		}
 
 		List<NPC> stuck = new ArrayList<>();
-		if (config.stuckTags())
+		// Jad counts as a ranged creature, but saying he is stuck behind a pillar would be telling
+		// you how to fight him, so his wave gets no tags.
+		if (config.stuckTags() && !jad)
 		{
 			for (NPC npc : alive)
 			{
@@ -895,6 +1339,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			stand = new Marks.Stand(spot.getX(), spot.getY(), spot == nextSpot, spot.safeFromRange());
 		}
+		compare = spot != null && config.standTile() ? Compare.of(StandPlanner.score(grid, foesOf(spot), px, py, 0, weaponRange), spot) : null;
 		Map<NPC, Integer> ranks = new HashMap<>();
 		for (int i = 0; i < order.size(); i++)
 		{
@@ -904,7 +1349,43 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				ranks.put((NPC) t.getFoe().getTag(), i + 1);
 			}
 		}
-		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck, ranks));
+		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck, ranks, rehearsal));
+	}
+
+	/**
+	 * Plays the next wave out from its spawn points to the tile you will stand on: the teal
+	 * tile when there is one, otherwise where you are. Only redone when the wave, the tile or
+	 * your weapon changes, so the panel's replay is not restarted every few ticks.
+	 */
+	private void rehearse(List<StandPlanner.Foe> next, int wave, int px, int py)
+	{
+		if (!config.rehearse() || next.isEmpty())
+		{
+			clearRehearsal();
+			return;
+		}
+		StandPlanner.Spot target = nextSpot != null && nextSpotWave == wave ? nextSpot : null;
+		int sx = target != null ? target.getX() : px;
+		int sy = target != null ? target.getY() : py;
+		String key = wave + ":" + sx + "," + sy + ":" + weaponRange + ":" + next.size();
+		if (key.equals(rehearsalKey))
+		{
+			return;
+		}
+		rehearsalKey = key;
+		rehearsal = Rehearsal.of(grid, next, sx, sy, weaponRange);
+		rehearsalCave = rehearsal.map(this::caveLocal);
+	}
+
+	/** The creatures a spot was worked out against. */
+	private static List<StandPlanner.Foe> foesOf(StandPlanner.Spot spot)
+	{
+		List<StandPlanner.Foe> list = new ArrayList<>();
+		for (StandPlanner.Outcome o : spot.getOutcomes())
+		{
+			list.add(o.getFoe());
+		}
+		return list;
 	}
 
 	/** The spot to show: the next wave's once the wave on now is all but done, otherwise the live one. */
@@ -952,12 +1433,34 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private void readWeapon(ItemContainer worn)
 	{
 		Item weapon = worn == null ? null : worn.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+		Item quiver = worn == null ? null : worn.getItem(EquipmentInventorySlot.AMMO.getSlotIdx());
+		ammo = quiver == null || quiver.getId() <= 0 ? 0 : quiver.getQuantity();
 		if (weapon == null || weapon.getId() <= 0)
 		{
 			weaponRange = 1;
+			weaponName = null;
 			return;
 		}
+		weaponName = itemManager.getItemComposition(weapon.getId()).getName();
 		weaponRange = rangeCache.computeIfAbsent(weapon.getId(), id -> WeaponRange.of(itemManager.getItemComposition(id).getName()));
+	}
+
+	/** True when TzTok-Jad or one of his healers is in the scene. */
+	private boolean jadOnFloor()
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv == null)
+		{
+			return false;
+		}
+		for (NPC npc : wv.npcs())
+		{
+			if (npc != null && Monster.isJadFight(npc.getName()))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private List<NPC> aliveFoes()
@@ -995,27 +1498,66 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		profile = configManager.getRSProfileKey();
 		book = null;
+		int generation = ++loadGeneration;
 		if (profile == null)
 		{
 			return;
 		}
-		try
+		String saved = configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY);
+		if (saved == null || saved.length() < Logbook.LARGE)
 		{
-			String saved = configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY);
-			if (saved != null && !saved.isEmpty())
+			Logbook read = Logbook.read(gson, saved);
+			loaded(profile, saved, read, Logbook.wouldLose(gson, saved, read));
+			return;
+		}
+		// Far bigger than any save the pilot writes (hand-edited, or from a build that kept every
+		// run): reading it takes tens of milliseconds, so it is read off the client thread and taken
+		// up on it. Until then the pilot shows and records nothing, as when logged out.
+		String forProfile = profile;
+		executor.execute(() ->
+		{
+			Logbook got;
+			boolean loses;
+			try
 			{
-				Logbook read = gson.fromJson(saved, Logbook.class);
-				book = read == null ? null : read.repair();
+				got = Logbook.read(gson, saved);
+				loses = Logbook.wouldLose(gson, saved, got);
 			}
-		}
-		catch (JsonParseException e)
+			catch (RuntimeException e)
+			{
+				// Never left without a logbook: start afresh, with the save as found put aside.
+				log.warn("Could not read the saved logbook", e);
+				got = new Logbook();
+				loses = true;
+			}
+			Logbook read = got;
+			boolean lose = loses;
+			clientThread.invokeLater(() ->
+			{
+				// Not if the account changed, or the plugin was turned off, while it was being read.
+				if (generation == loadGeneration && forProfile.equals(profile))
+				{
+					loaded(forProfile, saved, read, lose);
+					publish(true);
+				}
+			});
+		});
+	}
+
+	/**
+	 * Takes up the logbook read from {@code saved}, first putting {@code saved} aside when saving
+	 * over it would lose something ({@code lose}, from {@link Logbook#wouldLose}).
+	 */
+	private void loaded(String forProfile, String saved, Logbook read, boolean lose)
+	{
+		if (lose && saved.length() <= BACKUP_MAX)
 		{
-			log.warn("Could not read the saved logbook, starting afresh", e);
+			// A newer version's fields, a run ending this version does not know, or a damaged
+			// figure: the next save would overwrite them, so the save as found is kept aside.
+			log.warn("The saved logbook holds what this version cannot keep; a copy is kept under {}", BACKUP_KEY);
+			configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, forProfile, BACKUP_KEY, saved);
 		}
-		if (book == null)
-		{
-			book = new Logbook();
-		}
+		book = read;
 		pacer = new PrayerPacer(book.prayerSpent, book.prayerHitpoints);
 		unsaved = false;
 		lastViewKey = null;
@@ -1027,8 +1569,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			return;
 		}
+		// Written out first: on client close this runs off the client thread, and a logbook caught
+		// changing mid-write must stay marked unsaved rather than be lost.
+		String json = gson.toJson(book);
 		unsaved = false;
-		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, LOGBOOK_KEY, gson.toJson(book));
+		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, LOGBOOK_KEY, json);
 	}
 
 	private void chat(String text)
@@ -1042,17 +1587,38 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			.build());
 	}
 
-	/** Hands the panel and the plaque what they show; the panel only when something it shows changed. */
+	/**
+	 * Hands the panel and the plaque what they show; the panel only when something it shows
+	 * changed. The logbook is copied for the panel only then, not every tick: it holds every run.
+	 */
 	private void publish(boolean force)
 	{
+		jadWave();
 		PilotPanel target = panel;
-		View view = buildView();
-		updatePlaque(view);
-		String key = viewKey(view);
-		if (!force && key.equals(lastViewKey))
+		if (target == null || !target.isOpen())
 		{
+			// Closed: no logbook copy and no rebuild, just the plaque, and outside the cave only to take
+			// it down. Opening the panel forces a fresh view.
+			lastViewKey = null;
+			if (inCave || force || plaque.isShowing())
+			{
+				updatePlaque(buildView(false));
+			}
 			return;
 		}
+		String key = viewKey();
+		boolean changed = force || !key.equals(lastViewKey);
+		if (!changed)
+		{
+			if (inCave)
+			{
+				// The plaque follows prayer and doses every tick, and needs no logbook.
+				updatePlaque(buildView(false));
+			}
+			return;
+		}
+		View view = buildView(true);
+		updatePlaque(view);
 		lastViewKey = key;
 		if (target != null)
 		{
@@ -1060,7 +1626,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 	}
 
-	private View buildView()
+	/** Tells the panel whether Jad's wave is on, so it opens on its stepped-back card then. */
+	private void jadWave()
+	{
+		PilotPanel p = panel;
+		if (p != null)
+		{
+			p.jadWave(inCave && book != null && book.active != null && book.active.wave >= Waves.JAD);
+		}
+	}
+
+	/** @param withBook whether the panel will show it, so it needs its own copy of the logbook */
+	private View buildView(boolean withBook)
 	{
 		if (book == null || client.getGameState() != GameState.LOGGED_IN)
 		{
@@ -1071,15 +1648,20 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (!inCave)
 		{
 			PrayerPacer.Pace full = pacer.pace(1, level, level, 0, 0, config.jadDoses());
+			PrayerPacer.Pace carried = prayerDoses + restoreDoses > 0
+				? pacer.pace(1, level, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
 			return new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, prayer, level,
-				pacer.learned(), full.getDosesNeeded(), 0, null, copy(book));
+				pacer.learned(), full.getDosesNeeded(), 0, null, withBook ? copy(book) : null).withCarried(carried)
+				.withForecast(withBook ? Splits.forecast(book.runs, 1, 0, 0) : null)
+				.withReady(Ready.check(level, weaponName, weaponRange, ammo, foodCount, prayerDoses + restoreDoses))
+				.withBanked(withBook ? banked() : null);
 		}
 		Logbook.Active a = book.active;
 		int wave = a == null ? 0 : a.wave;
 		PrayerPacer.Pace pace = wave > 0 ? pacer.pace(wave, prayer, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
 		if (pace != null && config.chat())
 		{
-			if (pace.getState() == PrayerPacer.State.SHORT && !warnedShort && wave > 6)
+			if (pace.getState() == PrayerPacer.State.SHORT && !warnedShort && wave > 6 && wave < Waves.JAD)
 			{
 				warnedShort = true;
 				chat("prayer is behind pace: about " + Math.max(1, (int) Math.ceil(-pace.getSpare())) + " doses short for the waves left at your rate.");
@@ -1111,20 +1693,22 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			you = fraction(me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY());
 		}
-		Integer versus = null;
-		if (a != null && wave > 1 && book.capes > 0)
-		{
-			int best = book.bestSplit(wave - 1);
-			if (best > 0)
-			{
-				versus = a.waveStartTick - best;
-			}
-		}
+		// Raced against your best cape at the end of the last wave cleared.
+		Integer versus = a != null && wave > 1 ? Splits.versusPb(book.runs, wave - 1, a.waveStartTick, a.partial) : null;
+		int[] youTile = me != null && me.getLocalLocation() != null && grid != null
+			? caveLocal(new int[]{me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY()}) : null;
 		int rotation = tracker.rotation();
 		List<Placement> observed = observedWave == wave ? observed() : java.util.Collections.emptyList();
 		return new View(View.State.IN_CAVE, wave, rotation, tracker.candidates(), tracker.decidingWave(wave + 1), tracker.clean(),
-			aliveFoes().size(), stand, you, pace, prayer, level, pacer.learned(), 0, a == null ? 0 : a.ticks, versus, copy(book))
-			.withObserved(observed).withFight(callView(), killsView());
+			aliveFoes().size(), stand, you, pace, prayer, level, pacer.learned(), 0, a == null ? 0 : a.ticks, versus, withBook ? copy(book) : null)
+			.withObserved(observed).withFight(callView(), killsView())
+			.withRehearsal(config.rehearse() ? rehearsalCave : null, floor, youTile)
+			.withCompare(compare)
+			.withSplits(a == null ? null : Splits.recent(book.runs, a.splits, 3))
+			.withPartial(a != null && a.partial)
+			.withDanger(danger)
+			.withForecast(withBook && a != null && !a.partial ? Splits.forecast(book.runs, wave, a.ticks, a.ticks - a.waveStartTick) : null)
+			.withOutlook(config.outlook() ? outlookCodes(rotation) : null, config.outlook() ? outlookReason(wave) : null);
 	}
 
 	private View.Call callView()
@@ -1190,13 +1774,22 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	}
 
 	/** What the panel shows, minus the clock, which only needs a fresh draw every few seconds. */
-	private String viewKey(View v)
+	private String viewKey()
 	{
 		StringBuilder k = new StringBuilder();
 		k.append(client.getGameState()).append(inCave).append(tracker.rotation())
 			.append(tracker.candidates()).append(book == null ? "" : book.attempts + "/" + book.capes)
 			.append(book == null || book.active == null ? "" : book.active.wave + "/" + book.active.dosesUsed)
 			.append(prayerDoses).append('/').append(restoreDoses).append('/').append(client.getBoostedSkillLevel(Skill.PRAYER));
+		k.append('d').append(danger);
+		if (!inCave)
+		{
+			// The cave mouth's ready check and bank count.
+			Banked b = banked();
+			k.append('f').append(foodCount).append('a').append(ammo).append('w').append(weaponRange).append(weaponName)
+				.append('b').append(b == null ? "-" : b.getDoses() + "@" + b.getSavedAt() / 60_000L)
+				.append('l').append(client.getRealSkillLevel(Skill.PRAYER));
+		}
 		PrayerCall c = call;
 		if (c != null)
 		{
@@ -1211,6 +1804,26 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			k.append(spot.getX()).append(',').append(spot.getY()).append(spot == nextSpot);
 		}
+		k.append('r').append(rehearsalKey);
+		Outlook o = outlook;
+		if (o != null)
+		{
+			// While waves are still being rated, redraw every few of them rather than every one.
+			k.append('o').append(o.done() ? o.encode() : String.valueOf(o.rated() / 6));
+		}
+		Compare cmp = compare;
+		if (cmp != null)
+		{
+			k.append('c').append(cmp.getHeadline());
+			for (Compare.Row r : cmp.getRows())
+			{
+				k.append(r.getHere()).append(r.getThere());
+			}
+		}
+		if (book != null && book.active != null)
+		{
+			k.append('s').append(book.active.splits.size());
+		}
 		if (inCave)
 		{
 			// The run clock ticks on the panel every five seconds or so.
@@ -1221,9 +1834,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private void updatePlaque(View v)
 	{
-		if (!config.plaque() || v.getState() != View.State.IN_CAVE || v.getWave() == 0)
+		// Nothing on Jad's wave, not even the wave and your doses: the fight is yours to read.
+		if (!config.plaque() || v.getState() != View.State.IN_CAVE || v.getWave() == 0 || v.quiet())
 		{
-			plaque.show(null, null, null, null, null, null);
+			plaque.show(null, null, null, null, null, null, null);
 			return;
 		}
 		String note = v.getRotation() > 0 ? "Rotation " + v.getRotation() : "Reading rotation";
@@ -1232,7 +1846,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		View.Call c = v.getCall();
 		String call = c == null ? null : (c.isUp() ? "" : "Pray ") + c.getPrayer().getShortName() + (c.isUp() ? " up" : "");
 		plaque.show("Wave " + v.getWave(), note, prayer, pace == null ? Theme.TEXT_MUTED : Theme.of(pace.getState()),
-			call, c == null ? null : Theme.of(c.getPrayer()));
+			call, c == null ? null : Theme.of(c.getPrayer()), v.getDanger() > 0 ? "Eat: " + v.getDanger() + " can land" : null);
 	}
 
 	/** Drops sightings too old to belong to any wave, so the list cannot grow. */

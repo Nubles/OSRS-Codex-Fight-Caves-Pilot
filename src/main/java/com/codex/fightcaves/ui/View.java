@@ -128,6 +128,32 @@ public final class View
 	List<Placement> observed = Collections.emptyList();
 	Call call;
 	List<Kill> kills = Collections.emptyList();
+	/** The next wave played out before it spawns, in tiles of the cave's map square, or null. */
+	com.codex.fightcaves.core.Rehearsal rehearsal;
+	/** Walkable tiles of the cave's map square, [x][y], or null before the cave is read. */
+	boolean[][] floor;
+	/** Where you stand, in tiles of the cave's map square, or null. */
+	int[] youTile;
+	/** Why the gilt tile beats where you stand, or null when it does not clearly. */
+	com.codex.fightcaves.core.Compare compare;
+	/** The latest waves cleared this run: {wave, ticks, ticks against your best cape or MIN_VALUE}. */
+	List<int[]> recentSplits = Collections.emptyList();
+	/** The road to Jad for your rotation, one letter per wave (see Outlook), or null. */
+	String outlook;
+	/** Why the next hard wave is hard, from this visit's plan, or null. */
+	String outlookReason;
+	/** Your prayer against a whole run with what you carry, for the briefing outside the cave, or null. */
+	PrayerPacer.Pace carried;
+	/** True when the run in progress was picked up part way, so its clock is not a record. */
+	boolean partial;
+	/** What could land on you at once past your prayer, when it is enough to kill you; else 0. */
+	int danger;
+	/** The run clock when Jad's wave begins at your usual pace, or null when not known. */
+	Integer jadAt;
+	/** The ready check at the cave mouth, or empty. */
+	List<com.codex.fightcaves.core.Ready.Line> ready = Collections.emptyList();
+	/** The prayer doses in your bank as last seen, or null when the bank has not been seen. */
+	com.codex.fightcaves.core.Banked banked;
 
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		Stand stand, double[] you, PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
@@ -173,9 +199,96 @@ public final class View
 		return this;
 	}
 
+	/** Adds the next wave's rehearsal and the floor it plays out on. */
+	public View withRehearsal(com.codex.fightcaves.core.Rehearsal rehearsal, boolean[][] floor, int[] youTile)
+	{
+		this.rehearsal = rehearsal;
+		this.floor = floor;
+		this.youTile = youTile;
+		return this;
+	}
+
+	/** Adds why the gilt tile beats where you stand. */
+	public View withCompare(com.codex.fightcaves.core.Compare compare)
+	{
+		this.compare = compare;
+		return this;
+	}
+
+	/** Adds the latest splits of the run in progress. */
+	public View withSplits(List<int[]> recentSplits)
+	{
+		this.recentSplits = recentSplits == null ? Collections.emptyList() : recentSplits;
+		return this;
+	}
+
+	/** Adds the road to Jad and why its next hard wave is hard. */
+	public View withOutlook(String outlook, String reason)
+	{
+		this.outlook = outlook;
+		this.outlookReason = reason;
+		return this;
+	}
+
+	/** Adds your prayer against a whole run, for the briefing. */
+	public View withCarried(PrayerPacer.Pace carried)
+	{
+		this.carried = carried;
+		return this;
+	}
+
+	/** Marks the run in progress as picked up part way. */
+	public View withPartial(boolean partial)
+	{
+		this.partial = partial;
+		return this;
+	}
+
+	/** Adds the eat warning: what could land at once past your prayer, or 0. */
+	public View withDanger(int danger)
+	{
+		this.danger = danger;
+		return this;
+	}
+
+	/** Adds when the run reaches Jad at your usual pace (from wave 1 outside the cave), or null. */
+	public View withForecast(Integer jadAt)
+	{
+		this.jadAt = jadAt;
+		return this;
+	}
+
+	/** Adds the ready check for the cave mouth. */
+	public View withReady(List<com.codex.fightcaves.core.Ready.Line> ready)
+	{
+		this.ready = ready == null ? Collections.emptyList() : ready;
+		return this;
+	}
+
+	/** Adds the doses in your bank, or null when the bank has not been seen. */
+	public View withBanked(com.codex.fightcaves.core.Banked banked)
+	{
+		this.banked = banked;
+		return this;
+	}
+
+	public int getDanger()
+	{
+		return danger;
+	}
+
 	public Call getCall()
 	{
 		return call;
+	}
+
+	/**
+	 * True on Jad's wave inside the cave. The pilot then shows nothing to read or follow: no
+	 * plaque, no chart, no prayer pacing and no splits, only a line saying it has stepped back.
+	 */
+	public boolean quiet()
+	{
+		return state == State.IN_CAVE && wave >= com.codex.fightcaves.core.Waves.JAD;
 	}
 
 	public State getState()

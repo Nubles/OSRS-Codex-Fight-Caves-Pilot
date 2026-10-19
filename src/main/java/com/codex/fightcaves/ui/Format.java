@@ -39,10 +39,16 @@ public final class Format
 		return SHORT.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()));
 	}
 
-	/** "1 dose", "3 doses" */
-	public static String doses(int n)
+	/** A count with thousands marked: 1,234. */
+	public static String count(long n)
 	{
-		return n + (n == 1 ? " dose" : " doses");
+		return String.format(Locale.ENGLISH, "%,d", n);
+	}
+
+	/** "1 dose", "3 doses", "1,250 doses" */
+	public static String doses(long n)
+	{
+		return count(n) + (n == 1 ? " dose" : " doses");
 	}
 
 	/** "1 wave", "3 waves" */
@@ -56,5 +62,25 @@ public final class Format
 	{
 		long n = doses >= 0 ? (long) Math.floor(doses) : -(long) Math.ceil(-doses);
 		return (n >= 0 ? "+" : "") + n;
+	}
+
+	/** How long ago something was seen: "just now", "12 minutes ago", "3 hours ago", "2 days ago". */
+	public static String ago(long thenMs, long nowMs)
+	{
+		long minutes = Math.max(0, nowMs - thenMs) / 60_000L;
+		if (minutes < 1)
+		{
+			return "just now";
+		}
+		if (minutes < 60)
+		{
+			return minutes + (minutes == 1 ? " minute ago" : " minutes ago");
+		}
+		long hours = minutes / 60;
+		if (hours < 48)
+		{
+			return hours + (hours == 1 ? " hour ago" : " hours ago");
+		}
+		return (hours / 24) + " days ago";
 	}
 }

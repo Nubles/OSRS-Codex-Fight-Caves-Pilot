@@ -80,7 +80,26 @@ public final class Chase
 	 */
 	public static Chase run(Grid grid, Monster m, int x, int y, int tx, int ty)
 	{
+		return walk(grid, m, x, y, tx, ty, null);
+	}
+
+	/**
+	 * Plays the walk out like {@link #run} and also records it: the south-west tile the creature
+	 * stands on at each tick, the tile it spawned on first. Used to rehearse a wave before it
+	 * spawns.
+	 */
+	public static Chase trace(Grid grid, Monster m, int x, int y, int tx, int ty, java.util.List<int[]> path)
+	{
+		return walk(grid, m, x, y, tx, ty, path);
+	}
+
+	private static Chase walk(Grid grid, Monster m, int x, int y, int tx, int ty, java.util.List<int[]> path)
+	{
 		int size = m.getSize();
+		if (path != null)
+		{
+			path.add(new int[]{x, y});
+		}
 		if (canAttack(grid, m, x, y, tx, ty))
 		{
 			return new Chase(End.AT_ONCE, 0, x, y);
@@ -110,6 +129,10 @@ public final class Chase
 			}
 			x += sx;
 			y += sy;
+			if (path != null)
+			{
+				path.add(new int[]{x, y});
+			}
 			if (canAttack(grid, m, x, y, tx, ty))
 			{
 				return new Chase(End.REACHES, tick, x, y);

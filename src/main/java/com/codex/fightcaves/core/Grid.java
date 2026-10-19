@@ -288,7 +288,9 @@ public final class Grid
 
 	/**
 	 * Whether a size by size creature with its south-west corner at x,y can see a tile: true
-	 * when any tile on the creature's edge facing the target has line of sight to it.
+	 * when any tile on the creature's edge facing the target has line of sight to it. Only the
+	 * facing sides count, as in WorldArea.hasLineOfSightTo: a tile on the far side of the body
+	 * never sees round a pillar the near side cannot.
 	 */
 	public boolean areaSees(int x, int y, int size, int tx, int ty)
 	{
@@ -300,14 +302,33 @@ public final class Grid
 		{
 			for (int j = 0; j < size; j++)
 			{
-				boolean edge = i == 0 || j == 0 || i == size - 1 || j == size - 1;
-				if (edge && sees(x + i, y + j, tx, ty))
+				if (facing(x, y, size, tx, ty, x + i, y + j) && sees(x + i, y + j, tx, ty))
 				{
 					return true;
 				}
 			}
 		}
 		return false;
+	}
+
+	/** Whether a tile of the body is on a side that faces the target (WorldArea.isVisibleCandidate). */
+	static boolean facing(int x, int y, int size, int tx, int ty, int px, int py)
+	{
+		int east = x + size - 1;
+		int north = y + size - 1;
+		if (tx > east)
+		{
+			return px == east || ty < y && py == y || ty > north && py == north;
+		}
+		if (tx < x)
+		{
+			return px == x || ty < y && py == y || ty > north && py == north;
+		}
+		if (ty > north)
+		{
+			return py == north;
+		}
+		return ty < y && py == y;
 	}
 
 	/** Chebyshev distance from the nearest tile of a size by size area to a tile. */

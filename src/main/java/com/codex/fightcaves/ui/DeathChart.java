@@ -38,7 +38,7 @@ class DeathChart extends JComponent
 		bars[stretches] = deaths[Waves.JAD];
 		labels[stretches] = "Jad";
 		setOpaque(false);
-		setPreferredSize(new Dimension(10, 70));
+		setPreferredSize(new Dimension(10, 78));
 	}
 
 	@Override
@@ -61,7 +61,9 @@ class DeathChart extends JComponent
 		{
 			float x = i * slot + 2;
 			float bw = slot - 4;
-			int bh = bars[i] == 0 ? 2 : Math.max(4, Math.round(chartH * bars[i] / (float) max));
+			// The tallest bar leaves room above it for its count.
+			int room = chartH - small.getAscent() - 3;
+			int bh = bars[i] == 0 ? 2 : Math.max(4, Math.round(room * bars[i] / (float) max));
 			boolean jad = i == bars.length - 1;
 			RoundRectangle2D bar = new RoundRectangle2D.Float(x, chartH - bh, bw, bh, 4, 4);
 			if (bars[i] == 0)
