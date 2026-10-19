@@ -57,6 +57,10 @@ public class PilotPanel extends PluginPanel
 	/** Whether the panel is open in the sidebar; the plugin skips rebuilding it while it is not. */
 	private volatile boolean open;
 	private Runnable onOpen;
+	/** Set by the plugin: true while Jad's wave is on, so the panel opens on its stepped-back card. */
+	private volatile boolean jadWave;
+	/** The crest's line on Jad's wave; the card below says the rest. */
+	static final String STEPPED_BACK = "The pilot has stepped back";
 
 	public PilotPanel()
 	{
@@ -107,10 +111,22 @@ public class PilotPanel extends PluginPanel
 		return open || isShowing();
 	}
 
+	/** Tells the panel whether Jad's wave is on. Safe to call from any thread. */
+	public void jadWave(boolean on)
+	{
+		jadWave = on;
+	}
+
 	@Override
 	public void onActivate()
 	{
 		open = true;
+		if (jadWave)
+		{
+			// Opened on Jad's wave: what it drew when last open must not show, not even until the
+			// plugin's fresh view arrives, so every page steps back before the panel is painted.
+			stepBack();
+		}
 		Runnable r = onOpen;
 		if (r != null)
 		{
@@ -180,9 +196,14 @@ public class PilotPanel extends PluginPanel
 		String figure = view.wave > 0 ? String.valueOf(view.wave) : "-";
 		String status;
 		java.awt.Color color = Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.35);
+		if (view.quiet())
+		{
+			stepBackCrest();
+			return;
+		}
 		if (view.wave == Waves.JAD)
 		{
-			status = "Watch Jad, not the panel";
+			status = STEPPED_BACK;
 			color = Theme.BLOOD;
 		}
 		else if (view.pace != null && view.pace.getState() == PrayerPacer.State.SHORT)
@@ -226,10 +247,35 @@ public class PilotPanel extends PluginPanel
 	 * Jad's wave is yours alone: every page holds just this note until it ends, so there is
 	 * nothing on the panel to read or follow, not even a chart of where he stands.
 	 */
+	private void stepBack()
+	{
+		stepBackCrest();
+		quiet(pilot);
+		quiet(waves);
+		quiet(records);
+	}
+
+	/** The crest on Jad's wave: the wave alone, not even the rotation. */
+	private void stepBackCrest()
+	{
+		crest.update("TZHAAR FIGHT CAVE", String.valueOf(Waves.JAD), "/ " + Waves.LAST, STEPPED_BACK, Theme.BLOOD, Theme.BLOOD, 1.0);
+	}
+
+	/** True when a page holds only the stepped-back card, for tests. */
+	boolean steppedBack(int tab)
+	{
+		JScrollPane page = tab == 0 ? pilot : tab == 1 ? waves : records;
+		java.awt.Component c = page.getViewport().getView();
+		return c != null && QUIET.equals(c.getName());
+	}
+
+	private static final String QUIET = "quiet";
+
 	private static void quiet(JScrollPane page)
 	{
 		StackPanel stack = new StackPanel(8, 8);
-		Card card = note("TzTok-Jad", "The pilot shows nothing on this wave. Watch him, not the panel. Your run is filed the moment the wave ends.");
+		stack.setName(QUIET);
+		Card card = note("TzTok-Jad", "Nothing is shown on this wave. Watch him, not the panel. Your run is filed the moment the wave ends.");
 		card.accent(Theme.BLOOD);
 		stack.add(card);
 		replace(page, stack);

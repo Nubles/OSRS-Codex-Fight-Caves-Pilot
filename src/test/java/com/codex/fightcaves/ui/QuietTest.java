@@ -31,4 +31,37 @@ public class QuietTest
 	{
 		assertFalse(new View(View.State.OUTSIDE, Waves.JAD, 0, null, 0, false, 0, null, null, null, 50, 70, false, 0, 0, null, new Logbook()).quiet());
 	}
+
+	@Test
+	public void panelOpenedOnJadsWaveStepsBackBeforeItsFreshView() throws Exception
+	{
+		javax.swing.SwingUtilities.invokeAndWait(() ->
+		{
+			// Last drawn outside the cave, Waves page and all; closed; then opened on Jad's wave.
+			PilotPanel panel = new PilotPanel();
+			Logbook book = new Logbook();
+			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, 50, 70, false, 0, 0, null, book));
+			panel.onDeactivate();
+			assertFalse(panel.steppedBack(1));
+			panel.jadWave(true);
+			panel.onActivate();
+			for (int tab = 0; tab < 3; tab++)
+			{
+				assertTrue(panel.steppedBack(tab));
+			}
+		});
+	}
+
+	@Test
+	public void panelOpenedOffJadsWaveKeepsItsPages() throws Exception
+	{
+		javax.swing.SwingUtilities.invokeAndWait(() ->
+		{
+			PilotPanel panel = new PilotPanel();
+			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, 50, 70, false, 0, 0, null, new Logbook()));
+			panel.jadWave(false);
+			panel.onActivate();
+			assertFalse(panel.steppedBack(1));
+		});
+	}
 }

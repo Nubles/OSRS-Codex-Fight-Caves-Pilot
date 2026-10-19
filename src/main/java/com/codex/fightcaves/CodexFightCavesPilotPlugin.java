@@ -536,6 +536,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				// may be offered on it.
 				waveSpent = 0;
 				unsaved = true;
+				jadWave();
 			}
 			if (pendingWave > 0 && readyToRead())
 			{
@@ -814,6 +815,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		waveSpent = 0;
 		pendingWave = wave;
 		pendingTick = tick;
+		// Called between ticks: the panel must know at once, should it be opened before the next one.
+		jadWave();
 		liveSpot = null;
 		waveNpcs.clear();
 		unsaved = true;
@@ -1525,6 +1528,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	 */
 	private void publish(boolean force)
 	{
+		jadWave();
 		PilotPanel target = panel;
 		if (target == null || !target.isOpen())
 		{
@@ -1554,6 +1558,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (target != null)
 		{
 			SwingUtilities.invokeLater(() -> target.update(view));
+		}
+	}
+
+	/** Tells the panel whether Jad's wave is on, so it opens on its stepped-back card then. */
+	private void jadWave()
+	{
+		PilotPanel p = panel;
+		if (p != null)
+		{
+			p.jadWave(inCave && book != null && book.active != null && book.active.wave >= Waves.JAD);
 		}
 	}
 
