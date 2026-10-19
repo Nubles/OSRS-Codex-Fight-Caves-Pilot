@@ -133,4 +133,21 @@ public class RehearsalTest
 		assertNull(Compare.of(a, a));
 		assertNull(Compare.of(null, b));
 	}
+
+	@Test
+	public void headlinesForEachKindOfGain()
+	{
+		List<StandPlanner.Foe> one = Collections.singletonList(new StandPlanner.Foe(Monster.TZ_KIH, 3, 3));
+		// Same one creature reaches both tiles, but later from further away.
+		StandPlanner.Spot near = StandPlanner.score(FLOOR, one, 6, 6, 0, 1);
+		StandPlanner.Spot far = StandPlanner.score(FLOOR, one, 25, 25, 0, 1);
+		assertTrue(Compare.headline(near, far), Compare.headline(near, far).startsWith("The gilt tile buys time: the first hit lands on tick"));
+		List<StandPlanner.Foe> two = Arrays.asList(
+			new StandPlanner.Foe(Monster.KET_ZEK, 4, 20),
+			new StandPlanner.Foe(Monster.TZ_KIH, 9, 21));
+		StandPlanner.Spot mixed = StandPlanner.score(FLOOR, two, 10, 22, 0, 7);
+		assertEquals(2, Compare.styles(mixed).size());
+		assertEquals("Here 2 creatures can hit you, melee and magic at once. On the gilt tile, none can.",
+			Compare.headline(mixed, StandPlanner.score(FLOOR, Collections.singletonList(new StandPlanner.Foe(Monster.KET_ZEK, 4, 13)), 17, 14, 0, 7)));
+	}
 }

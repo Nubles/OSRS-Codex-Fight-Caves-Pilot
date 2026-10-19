@@ -72,6 +72,9 @@ public class SplitsTest
 	{
 		List<Logbook.Run> runs = Collections.singletonList(run(Logbook.Result.CAPE, 63, 50));
 		assertEquals(Integer.valueOf(-20), Splits.versusPb(runs, 3, 130));
+		// A faster run that died is not the cape being raced.
+		List<Logbook.Run> withFall = Arrays.asList(run(Logbook.Result.CAPE, 63, 50), run(Logbook.Result.DIED, 20, 30));
+		assertEquals(Integer.valueOf(-20), Splits.versusPb(withFall, 3, 130));
 		assertNull(Splits.versusPb(Collections.emptyList(), 3, 130));
 		assertNull(Splits.versusPb(runs, 0, 0));
 	}

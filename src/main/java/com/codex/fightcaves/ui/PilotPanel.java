@@ -269,7 +269,8 @@ public class PilotPanel extends PluginPanel
 			StackPanel foots = new StackPanel(3, 0);
 			if (view.compare != null)
 			{
-				foots.add(Ui.wrapped(view.compare.getHeadline(), Theme.small(), Theme.mix(Theme.TEXT_MUTED, Theme.EMBER, 0.35), WIDTH - 40));
+				String why = next ? "When wave " + shown + " spawns: " + lowerFirst(view.compare.getHeadline()) : view.compare.getHeadline();
+				foots.add(Ui.wrapped(why, Theme.small(), Theme.mix(Theme.TEXT_MUTED, Theme.EMBER, 0.35), WIDTH - 40));
 			}
 			foots.add(Ui.wrapped(foot + ".", Theme.small(), view.stand.safe ? Theme.TEAL : Theme.TEXT_FAINT, WIDTH - 40));
 			card.add(foots, BorderLayout.SOUTH);
@@ -405,6 +406,11 @@ public class PilotPanel extends PluginPanel
 		card.add(Ui.wrapped(text, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
 		card.accent(Theme.TEAL);
 		return card;
+	}
+
+	private static String lowerFirst(String s)
+	{
+		return s.isEmpty() ? s : Character.toLowerCase(s.charAt(0)) + s.substring(1);
 	}
 
 	private static String join(List<Integer> list)
