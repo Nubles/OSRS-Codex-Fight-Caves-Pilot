@@ -90,6 +90,20 @@ public final class Logbook
 	/** "rotation:reach" to the road to Jad worked out for it, one letter per wave (see {@link Outlook}). */
 	public Map<String, String> outlooks = new HashMap<>();
 
+	/** A list with every gap read as 0, or an empty one. */
+	private static List<Integer> filled(List<Integer> list)
+	{
+		List<Integer> out = new ArrayList<>();
+		if (list != null)
+		{
+			for (Integer v : list)
+			{
+				out.add(v == null ? 0 : v);
+			}
+		}
+		return out;
+	}
+
 	/** Fills in anything an older save left out. */
 	public Logbook repair()
 	{
@@ -117,15 +131,19 @@ public final class Logbook
 		{
 			outlooks = new HashMap<>();
 		}
+		// A hand-edited or damaged save can hold gaps; a gap reads as untimed or unhurt.
+		if (runs.contains(null))
+		{
+			runs = new ArrayList<>(runs);
+			runs.removeIf(java.util.Objects::isNull);
+		}
 		for (Run r : runs)
 		{
-			if (r.splits == null)
+			r.splits = filled(r.splits);
+			r.hurt = filled(r.hurt);
+			if (r.fallHp != null && r.fallHp.contains(null))
 			{
-				r.splits = new ArrayList<>();
-			}
-			if (r.hurt == null)
-			{
-				r.hurt = new ArrayList<>();
+				r.fallHp = null;
 			}
 		}
 		if (prayerHitpoints <= 0)

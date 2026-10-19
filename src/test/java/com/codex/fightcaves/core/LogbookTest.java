@@ -140,4 +140,27 @@ public class LogbookTest
 		book.finish(Logbook.Result.LEFT);
 		assertEquals(14 / 4.0, Damage.perWaveByStretch(book.runs)[0], 1e-9);
 	}
+
+	@Test
+	public void aDamagedSaveWithGapsInItsListsStillReads()
+	{
+		Logbook book = new Logbook();
+		book.runs = new java.util.ArrayList<>();
+		book.runs.add(null);
+		for (int i = 0; i < 2; i++)
+		{
+			Logbook.Run r = new Logbook.Run();
+			r.splits = new java.util.ArrayList<>(Arrays.asList(null, 40));
+			r.hurt = new java.util.ArrayList<>(Arrays.asList(3, null));
+			r.fallHp = new java.util.ArrayList<>(Arrays.asList(30, null, 0));
+			book.runs.add(r);
+		}
+		book.repair();
+		assertEquals(2, book.runs.size());
+		assertEquals(Arrays.asList(0, 40), book.runs.get(0).splits);
+		assertEquals(Arrays.asList(3, 0), book.runs.get(0).hurt);
+		assertNull(book.runs.get(0).fallHp);
+		// Wave 1 was never timed in these runs, so there is no usual time to forecast from.
+		assertNull(Splits.forecast(book.runs, 1, 0, 0));
+	}
 }
