@@ -125,4 +125,19 @@ public class LogbookTest
 		assertEquals(0, book.outlooks.size());
 		assertEquals(0, Damage.total(old));
 	}
+
+	@Test
+	public void wavesWithoutAHitStillCountAsPlayed()
+	{
+		Logbook book = new Logbook();
+		Logbook.Active hurtRun = book.begin(1, 0);
+		Logbook.hurt(hurtRun, 14);
+		play(hurtRun, 1, 1, 30);
+		book.finish(Logbook.Result.DIED);
+		// A clean run over the same two waves halves the average rather than being left out.
+		Logbook.Active clean = book.begin(1, 0);
+		play(clean, 1, 1, 30);
+		book.finish(Logbook.Result.LEFT);
+		assertEquals(14 / 4.0, Damage.perWaveByStretch(book.runs)[0], 1e-9);
+	}
 }

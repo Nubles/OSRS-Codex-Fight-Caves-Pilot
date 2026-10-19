@@ -218,6 +218,7 @@ public final class Logbook
 			a.splits.add(0);
 			a.hurt.add(0);
 		}
+		a.hurt.add(0);
 		a.partial = wave > 1;
 		active = a;
 		return a;
@@ -249,6 +250,11 @@ public final class Logbook
 		}
 		a.wave = wave;
 		a.waveStartTick = a.ticks;
+		// Every wave reached has a damage entry, so a wave you took no hits on still counts as played.
+		while (a.hurt.size() < Math.min(wave, Waves.LAST))
+		{
+			a.hurt.add(0);
+		}
 		return cleared;
 	}
 

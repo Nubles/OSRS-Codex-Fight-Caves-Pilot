@@ -273,8 +273,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		switch (event.getGameState())
 		{
 			case LOADING:
-				// A fresh copy of the cave means fresh collision data.
+				// A fresh copy of the cave means fresh collision data, and fresh scene tiles for
+				// the road to Jad to start from.
 				grid = null;
+				outlook = null;
 				break;
 			case LOGIN_SCREEN:
 			case HOPPING:
