@@ -1,0 +1,158 @@
+package com.codex.fightcaves.core;
+
+/**
+ * The cave's creatures, with what the pilot needs to plan around them: how big they are,
+ * how they hit and from how far, and how much of the fight they are.
+ */
+public enum Monster
+{
+	TZ_KIH("Tz-Kih", "Bat", 22, 1, 10, Style.MELEE, 1, 1, 4),
+	TZ_KEK("Tz-Kek", "Blob", 45, 2, 20, Style.MELEE, 1, 2, 7),
+	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 10, 4, 14, 13),
+	YT_MEJKOT("Yt-MejKot", "Melee", 180, 4, 80, Style.MELEE, 1, 5, 25),
+	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 10, 9, 52, 55),
+	TZTOK_JAD("TzTok-Jad", "Jad", 702, 5, 250, Style.MIXED, 10, 12, 97);
+
+	/** How a creature fights. */
+	public enum Style
+	{
+		MELEE,
+		RANGED,
+		MAGIC,
+		MIXED
+	}
+
+	private final String name;
+	private final String nickname;
+	private final int level;
+	private final int size;
+	private final int hitpoints;
+	private final Style style;
+	private final int range;
+	private final int threat;
+	private final int maxHit;
+	private final int meleeMaxHit;
+
+	Monster(String name, String nickname, int level, int size, int hitpoints, Style style, int range, int threat, int maxHit)
+	{
+		this(name, nickname, level, size, hitpoints, style, range, threat, maxHit, maxHit);
+	}
+
+	/**
+	 * @param maxHit its biggest hit with its own style
+	 * @param meleeMaxHit its biggest hit in melee, for a ranger or mager beside you
+	 */
+	Monster(String name, String nickname, int level, int size, int hitpoints, Style style, int range, int threat, int maxHit, int meleeMaxHit)
+	{
+		this.maxHit = maxHit;
+		this.meleeMaxHit = meleeMaxHit;
+		this.name = name;
+		this.nickname = nickname;
+		this.level = level;
+		this.size = size;
+		this.hitpoints = hitpoints;
+		this.style = style;
+		this.range = range;
+		this.threat = threat;
+	}
+
+	public String getName()
+	{
+		return name;
+	}
+
+	/** What players call it: Bat, Blob, Ranger, Melee, Mager, Jad. */
+	public String getNickname()
+	{
+		return nickname;
+	}
+
+	public int getLevel()
+	{
+		return level;
+	}
+
+	/** Tiles along each side. */
+	public int getSize()
+	{
+		return size;
+	}
+
+	public int getHitpoints()
+	{
+		return hitpoints;
+	}
+
+	public Style getStyle()
+	{
+		return style;
+	}
+
+	/** How far it can attack from, in tiles; 1 for melee. */
+	public int getRange()
+	{
+		return range;
+	}
+
+	/** How much it matters to keep it off you, used to weigh where to stand. */
+	public int getThreat()
+	{
+		return threat;
+	}
+
+	/** Its biggest hit, with any of its attacks (the wiki's figures). */
+	public int getMaxHit()
+	{
+		return Math.max(maxHit, meleeMaxHit);
+	}
+
+	/** Its biggest hit with one style: a ranger or mager beside you hits with melee, and not as hard. */
+	public int maxHitWith(Style s)
+	{
+		return s == Style.MELEE ? meleeMaxHit : maxHit;
+	}
+
+	/**
+	 * How it attacks from a south-west tile: rangers and magers switch to melee once they are
+	 * beside you, which is why standing next to one costs you the prayer you had up for it.
+	 */
+	public Style styleAt(int x, int y, int tx, int ty)
+	{
+		return isRanged() && Grid.meleeReach(x, y, size, tx, ty) ? Style.MELEE : style;
+	}
+
+	/** Attacks from a distance, so standing out of its sight is what keeps it off you. */
+	public boolean isRanged()
+	{
+		return range > 1;
+	}
+
+	/**
+	 * True for TzTok-Jad and his healers, at any level: when one is on the floor the Jad wave is
+	 * on, whatever wave the logbook last heard called.
+	 */
+	public static boolean isJadFight(String name)
+	{
+		return name != null && (name.equalsIgnoreCase(TZTOK_JAD.name) || name.equalsIgnoreCase("Yt-HurKot"));
+	}
+
+	/**
+	 * The wave creature with this name and combat level, or null. A Tz-Kek's level 22 halves
+	 * after it splits are not wave spawns, so they are left out.
+	 */
+	public static Monster of(String name, int level)
+	{
+		if (name == null)
+		{
+			return null;
+		}
+		for (Monster m : values())
+		{
+			if (m.name.equalsIgnoreCase(name) && m.level == level)
+			{
+				return m;
+			}
+		}
+		return null;
+	}
+}
