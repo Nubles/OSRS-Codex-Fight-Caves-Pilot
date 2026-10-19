@@ -56,6 +56,10 @@ public class CaveOverlay extends Overlay
 		}
 		Theme.smooth(g);
 		g.setFont(Theme.small());
+		if (m.rehearsal != null)
+		{
+			paintRehearsal(g, wv, m.rehearsal);
+		}
 		for (Marks.Ghost ghost : m.ghosts)
 		{
 			int size = ghost.monster.getSize();
@@ -156,5 +160,71 @@ public class CaveOverlay extends Overlay
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Each creature's walk from its spawn to where it stops, as a dotted line on the floor in its
+	 * prayer's colour, ending in a ring: teal where it sticks, ember where it starts hitting you.
+	 */
+	private void paintRehearsal(Graphics2D g, WorldView wv, com.codex.fightcaves.core.Rehearsal r)
+	{
+		int plane = wv.getPlane();
+		for (com.codex.fightcaves.core.Rehearsal.Track t : r.getTracks())
+		{
+			java.util.List<int[]> path = t.getPath();
+			if (path.size() < 2)
+			{
+				continue;
+			}
+			int size = t.getMonster().getSize();
+			java.awt.geom.Path2D line = new java.awt.geom.Path2D.Double();
+			Point last = null;
+			boolean started = false;
+			for (int[] tile : path)
+			{
+				LocalPoint sw = LocalPoint.fromScene(tile[0], tile[1], wv);
+				if (sw == null)
+				{
+					continue;
+				}
+				LocalPoint centre = new LocalPoint(sw.getX() + (size - 1) * 64, sw.getY() + (size - 1) * 64, wv);
+				Point p = Perspective.localToCanvas(client, centre, plane);
+				if (p == null)
+				{
+					continue;
+				}
+				if (!started)
+				{
+					line.moveTo(p.getX(), p.getY());
+					started = true;
+				}
+				else
+				{
+					line.lineTo(p.getX(), p.getY());
+				}
+				last = p;
+			}
+			if (!started || last == null)
+			{
+				continue;
+			}
+			Color color = Theme.of(t.getMonster());
+			g.setStroke(new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			g.setColor(Theme.alpha(Color.BLACK, 70));
+			g.draw(line);
+			g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1, new float[]{2, 6}, 0));
+			g.setColor(Theme.alpha(color, 220));
+			g.draw(line);
+			Color end = t.attacks() ? Theme.EMBER : Theme.TEAL;
+			g.setStroke(new BasicStroke(2f));
+			g.setColor(Theme.alpha(Color.BLACK, 120));
+			g.drawOval(last.getX() - 6, last.getY() - 6, 12, 12);
+			g.setStroke(new BasicStroke(1.4f));
+			g.setColor(end);
+			g.drawOval(last.getX() - 5, last.getY() - 5, 10, 10);
+			String label = t.attacks() ? (t.getTicks() == 0 ? "at once" : t.getTicks() + (t.getTicks() == 1 ? " tick" : " ticks")) : t.isInReach() ? "safespot" : "stuck";
+			FontMetrics fm = g.getFontMetrics();
+			Ui.shadowed(g, label, last.getX() - fm.stringWidth(label) / 2, last.getY() + 7 + fm.getAscent(), end);
+		}
 	}
 }

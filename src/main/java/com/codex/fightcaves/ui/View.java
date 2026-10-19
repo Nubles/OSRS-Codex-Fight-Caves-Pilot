@@ -128,6 +128,16 @@ public final class View
 	List<Placement> observed = Collections.emptyList();
 	Call call;
 	List<Kill> kills = Collections.emptyList();
+	/** The next wave played out before it spawns, in tiles of the cave's map square, or null. */
+	com.codex.fightcaves.core.Rehearsal rehearsal;
+	/** Walkable tiles of the cave's map square, [x][y], or null before the cave is read. */
+	boolean[][] floor;
+	/** Where you stand, in tiles of the cave's map square, or null. */
+	int[] youTile;
+	/** Why the gilt tile beats where you stand, or null when it does not clearly. */
+	com.codex.fightcaves.core.Compare compare;
+	/** The latest waves cleared this run: {wave, ticks, ticks against your best cape or MIN_VALUE}. */
+	List<int[]> recentSplits = Collections.emptyList();
 
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		Stand stand, double[] you, PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
@@ -170,6 +180,29 @@ public final class View
 	{
 		this.call = call;
 		this.kills = kills == null ? Collections.emptyList() : kills;
+		return this;
+	}
+
+	/** Adds the next wave's rehearsal and the floor it plays out on. */
+	public View withRehearsal(com.codex.fightcaves.core.Rehearsal rehearsal, boolean[][] floor, int[] youTile)
+	{
+		this.rehearsal = rehearsal;
+		this.floor = floor;
+		this.youTile = youTile;
+		return this;
+	}
+
+	/** Adds why the gilt tile beats where you stand. */
+	public View withCompare(com.codex.fightcaves.core.Compare compare)
+	{
+		this.compare = compare;
+		return this;
+	}
+
+	/** Adds the latest splits of the run in progress. */
+	public View withSplits(List<int[]> recentSplits)
+	{
+		this.recentSplits = recentSplits == null ? Collections.emptyList() : recentSplits;
 		return this;
 	}
 

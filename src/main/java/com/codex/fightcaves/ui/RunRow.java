@@ -2,23 +2,67 @@ package com.codex.fightcaves.ui;
 
 import com.codex.fightcaves.core.Logbook;
 import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import javax.swing.JComponent;
 
-/** One past run: how it ended, on which rotation, how long it took and when. */
+/**
+ * One past run: how it ended, on which rotation, how long it took and when. On the Records page
+ * a run can be clicked to set its splits against your best cape; the chosen one is lit.
+ */
 class RunRow extends JComponent
 {
 	private final Logbook.Run run;
+	private final boolean selected;
+	private boolean hover;
 
 	RunRow(Logbook.Run run)
 	{
+		this(run, false, null);
+	}
+
+	RunRow(Logbook.Run run, boolean selected, Runnable onClick)
+	{
 		this.run = run;
+		this.selected = selected;
 		setOpaque(false);
 		setPreferredSize(new Dimension(10, 30));
+		if (onClick != null)
+		{
+			setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			setToolTipText(selected ? "These splits are shown above" : "Show this run's splits against your best cape");
+			addMouseListener(new MouseAdapter()
+			{
+				@Override
+				public void mouseEntered(MouseEvent e)
+				{
+					hover = true;
+					repaint();
+				}
+
+				@Override
+				public void mouseExited(MouseEvent e)
+				{
+					hover = false;
+					repaint();
+				}
+
+				@Override
+				public void mouseReleased(MouseEvent e)
+				{
+					if (contains(e.getPoint()))
+					{
+						onClick.run();
+					}
+				}
+			});
+		}
 	}
 
 	@Override
@@ -30,6 +74,11 @@ class RunRow extends JComponent
 		int h = getHeight();
 		boolean cape = run.result == Logbook.Result.CAPE;
 		Color color = cape ? Theme.GOLD_BRIGHT : run.result == Logbook.Result.DIED ? Theme.BLOOD : Theme.TEXT_MUTED;
+		if (selected || hover)
+		{
+			g.setColor(Theme.alpha(Theme.GOLD, selected ? 34 : 18));
+			g.fill(new RoundRectangle2D.Float(0, 0, w, h, 8, 8));
+		}
 
 		RoundRectangle2D badge = new RoundRectangle2D.Float(0.5f, 3.5f, 24, h - 7, 6, 6);
 		g.setColor(Theme.INK_DEEP);

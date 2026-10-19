@@ -19,16 +19,23 @@ It is part of the **Codex** suite, alongside [Codex Navigator](https://github.co
 - **Your weapon's reach.** The pilot reads what you wield, so a blowpipe, a crossbow, a longbow and a staff each get the tiles they can really hit a stuck creature from.
 - **Follow the fight.** During a wave the tile is re-worked from where the creatures really are, and only moves when a new tile is clearly safer, so it does not flicker.
 - **The next wave.** As a wave draws to a close, dashed outlines on the floor show where the next wave's creatures will appear, coloured by the prayer that answers them, and a teal tile shows where to be standing when they do.
+- **Wave rehearsal.** As a wave draws to a close, the pilot plays the next one out before it spawns. On the floor, a dotted trail runs from each spawn point to where that creature will stop, ending in a teal ring where it sticks or an ember one where it reaches you, with how many ticks it takes. On the panel the same wave plays at the game's pace on a true map of the cave, its floor and pillars read from the game's own collision map, looping with a pause on how it ends, under one line such as "First hit on tick 6 (3.6s), from the melee. 1 of 2 stick."
+- **Why that tile.** When the gilt tile is clearly safer than where you are, the panel sets the two side by side, creature by creature ("Mager: hits now" against "stuck"), with one sentence on what changes: fewer creatures able to hit you, one prayer covering what is left instead of two styles at once, or the first hit landing later. It works for the fight on now and for where to be when the next wave spawns.
 - **Stuck tags.** A small "Stuck" tag floats over any ranger or mager that cannot hit you where you stand.
 - **Prayer pacing.** The cave's waves follow a fixed ladder, so what is left of a run is known exactly. The pilot learns how much prayer you spend per hitpoint of wave on the waves that need protection prayers, and turns that into doses: how many you carry, how many the rest of the run takes, how many you have spare, and the level to sip at so no dose overflows. Doses for Jad are held back (four by default). If you fall behind, a line in the chat box says by how much.
 - **Waves.** Every wave of every rotation, to study before you go in: pick a rotation, click any wave to see it on the cave chart with the wave after it outlined.
-- **Records.** Capes, runs, best time and furthest wave, where your runs end in stretches of seven waves, and recent runs with rotation, time and doses drunk. While a run is on, the panel shows how you stand against your best cape at the same wave.
+- **Records.** Capes, runs, best time and furthest wave, where your runs end in stretches of seven waves, and recent runs with rotation, time and doses drunk.
+- **Splits.** Every run is timed wave by wave and read the way speedrunners read a run. Records cuts it into nine stretches of seven waves, with your best cape's time, your best ever for that stretch (gilt when the run matched it) and how the run did against the cape, green when ahead. Click any recent run to set its splits against the cape instead of the latest. Adding up your best of every wave gives the time you have already proven you can do, and the panel says how far under your best cape that is and which stretch holds the most to win back. During a run, the last three waves sit against the same waves of your best cape, and the run clock against the cape at the same wave.
 - **Plaque.** A slim plaque in the game view with the wave, the rotation and your doses against pace.
 
 <p align="center">
   <img src="docs/screenshots/pilot-next.png" width="225" alt="Planning the next wave">
   <img src="docs/screenshots/reading.png" width="225" alt="Reading the rotation">
   <img src="docs/screenshots/outside.png" width="225" alt="At the cave mouth">
+</p>
+<p align="center">
+  <img src="docs/screenshots/rehearsal.png" width="225" alt="Rehearsing the next wave">
+  <img src="docs/screenshots/compare.png" width="225" alt="Where you are against the gilt tile">
 </p>
 <p align="center">
   <img src="docs/screenshots/plaque.png" alt="Plaque">
@@ -53,7 +60,7 @@ It gives no help with TzTok-Jad's attacks. RuneLite removed its Jad helper becau
 ./gradlew run     # launch RuneLite with the plugin loaded
 ```
 
-The rotation tracker, wave ladder, collision and line of sight rules, stand planner, kill order, prayer call, weapon reach and prayer pacer (`core/`) are plain Java with unit tests; the panel and overlays are in `ui/` and `overlay/`. The step and line of sight rules are ported from RuneLite's `WorldArea`.
+The rotation tracker, wave ladder, collision and line of sight rules, stand planner, wave rehearsal, tile comparison, splits, kill order, prayer call, weapon reach and prayer pacer (`core/`) are plain Java with unit tests; the panel and overlays are in `ui/` and `overlay/`. The step and line of sight rules are ported from RuneLite's `WorldArea`.
 
 ## Licence
 

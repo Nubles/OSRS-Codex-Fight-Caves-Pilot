@@ -177,26 +177,4 @@ public final class Logbook
 		}
 		return list;
 	}
-
-	/** The best time to reach the end of a wave across caped runs, in ticks, or 0. */
-	public int bestSplit(int wave)
-	{
-		int best = 0;
-		for (Run r : runs)
-		{
-			if (r.splits.size() >= wave)
-			{
-				int sum = 0;
-				for (int i = 0; i < wave; i++)
-				{
-					sum += r.splits.get(i);
-				}
-				if (best == 0 || sum < best)
-				{
-					best = sum;
-				}
-			}
-		}
-		return best;
-	}
 }

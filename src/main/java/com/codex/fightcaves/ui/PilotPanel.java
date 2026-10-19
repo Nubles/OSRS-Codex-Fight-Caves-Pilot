@@ -4,6 +4,7 @@ import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerPacer;
 import com.codex.fightcaves.core.Rotations;
+import com.codex.fightcaves.core.Splits;
 import com.codex.fightcaves.core.Waves;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -42,6 +43,10 @@ public class PilotPanel extends PluginPanel
 	private int studyRotation = 1;
 	private int studyWave = 1;
 	private boolean studyTouched;
+	/** Kept across rebuilds so the rehearsal plays on instead of restarting each time the panel redraws. */
+	private final RehearsalChart rehearsalChart = new RehearsalChart(196);
+	/** The run whose splits the Records page sets against your best cape, by when it ended; 0 for the latest. */
+	private long comparedRun;
 
 	public PilotPanel()
 	{
@@ -108,6 +113,12 @@ public class PilotPanel extends PluginPanel
 		studyWave = wave;
 		studyTouched = true;
 		rebuildWaves();
+	}
+
+	/** Holds the rehearsal on one moment, in ticks, for previews and tests. */
+	public void freezeRehearsal(double tick)
+	{
+		rehearsalChart.freeze(tick);
 	}
 
 	private void updateCrest()
@@ -209,11 +220,22 @@ public class PilotPanel extends PluginPanel
 				faint = Collections.emptyList();
 			}
 		}
-		CaveChart chart = new CaveChart(170);
-		String caption = view.wave == 0 ? "WAITING FOR WAVE 1" : next ? "NEXT  WAVE " + shown : "WAVE " + shown;
-		chart.show(caption, view.rotation > 0 ? "ROTATION " + view.rotation : "ROTATION ?", bright, faint,
-			view.stand == null ? null : new double[]{view.stand.fx, view.stand.fy}, next, view.you);
-		stack.add(chart);
+		if (view.rehearsal != null && view.floor != null)
+		{
+			// The next wave played out on the real floor before it spawns.
+			rehearsalChart.show("REHEARSING WAVE " + Math.min(Waves.LAST, wave + 1), view.floor, view.rehearsal, view.youTile);
+			stack.add(rehearsalChart);
+			stack.add(Ui.wrapped(view.rehearsal.headline(), Theme.small(),
+				view.rehearsal.firstHit() < 0 ? Theme.TEAL : Theme.TEXT_MUTED, WIDTH - 16));
+		}
+		else
+		{
+			CaveChart chart = new CaveChart(170);
+			String caption = view.wave == 0 ? "WAITING FOR WAVE 1" : next ? "NEXT  WAVE " + shown : "WAVE " + shown;
+			chart.show(caption, view.rotation > 0 ? "ROTATION " + view.rotation : "ROTATION ?", bright, faint,
+				view.stand == null ? null : new double[]{view.stand.fx, view.stand.fy}, next, view.you);
+			stack.add(chart);
+		}
 
 		stack.add(rotationCard());
 
@@ -222,9 +244,21 @@ public class PilotPanel extends PluginPanel
 			stack.add(new SectionHeader("Where to stand", next ? "for wave " + shown : "now"));
 			Card card = new Card(new BorderLayout(0, 4));
 			StackPanel rows = new StackPanel(2, 0);
-			for (View.Fate f : view.stand.fates)
+			if (view.compare != null)
 			{
-				rows.add(new FateRow(f));
+				// Where you are against the gilt tile, creature by creature.
+				rows.add(new CompareRow(null));
+				for (com.codex.fightcaves.core.Compare.Row r : view.compare.getRows())
+				{
+					rows.add(new CompareRow(r));
+				}
+			}
+			else
+			{
+				for (View.Fate f : view.stand.fates)
+				{
+					rows.add(new FateRow(f));
+				}
 			}
 			card.add(rows, BorderLayout.CENTER);
 			String foot = view.stand.safe ? "Every ranger and mager is stuck from here" : "The gilt tile is the safest within reach";
@@ -232,7 +266,13 @@ public class PilotPanel extends PluginPanel
 			{
 				foot += ", " + view.stand.steps + (view.stand.steps == 1 ? " step away" : " steps away");
 			}
-			card.add(Ui.wrapped(foot, Theme.small(), view.stand.safe ? Theme.TEAL : Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.SOUTH);
+			StackPanel foots = new StackPanel(3, 0);
+			if (view.compare != null)
+			{
+				foots.add(Ui.wrapped(view.compare.getHeadline(), Theme.small(), Theme.mix(Theme.TEXT_MUTED, Theme.EMBER, 0.35), WIDTH - 40));
+			}
+			foots.add(Ui.wrapped(foot + ".", Theme.small(), view.stand.safe ? Theme.TEAL : Theme.TEXT_FAINT, WIDTH - 40));
+			card.add(foots, BorderLayout.SOUTH);
 			card.accent(view.stand.safe ? Theme.TEAL : Theme.GOLD);
 			stack.add(card);
 		}
@@ -278,6 +318,29 @@ public class PilotPanel extends PluginPanel
 			for (int w = wave; w <= Math.min(Waves.LAST, wave + AHEAD - 1); w++)
 			{
 				rows.add(new WaveRow(w, view.placements(view.rotation, w), w == wave ? WaveRow.Mark.NOW : w == wave + 1 ? WaveRow.Mark.NEXT : WaveRow.Mark.NONE, null));
+			}
+			card.add(rows, BorderLayout.CENTER);
+			stack.add(card);
+		}
+
+		if (!view.recentSplits.isEmpty())
+		{
+			boolean racing = view.recentSplits.get(0)[2] != Integer.MIN_VALUE;
+			stack.add(new SectionHeader("Splits", racing ? "against your best cape" : "this run"));
+			Card card = new Card(new BorderLayout());
+			StackPanel rows = new StackPanel(1, 0);
+			rows.add(racing ? SplitRow.header("", "TIME", "CAPE", "") : SplitRow.header("", "TIME"));
+			for (int[] split : view.recentSplits)
+			{
+				String label = "Wave " + split[0];
+				if (racing)
+				{
+					rows.add(new SplitRow(label, new String[]{Format.ticks(split[1]), Format.ticks(split[1] - split[2])}, split[2], Theme.TEXT));
+				}
+				else
+				{
+					rows.add(SplitRow.plain(label, Theme.TEXT, Format.ticks(split[1])));
+				}
 			}
 			card.add(rows, BorderLayout.CENTER);
 			stack.add(card);
@@ -444,6 +507,11 @@ public class PilotPanel extends PluginPanel
 		tiles.add(new StatTile(b.furthest > 0 ? String.valueOf(b.furthest) : "-", "Furthest", "wave reached", Theme.EMBER));
 		stack.add(tiles);
 
+		if (!b.runs.isEmpty())
+		{
+			buildSplits(stack, b);
+		}
+
 		stack.add(new SectionHeader("Where runs end"));
 		Card deaths = new Card(new BorderLayout());
 		deaths.add(new DeathChart(b.deaths), BorderLayout.CENTER);
@@ -458,13 +526,98 @@ public class PilotPanel extends PluginPanel
 			stack.add(new SectionHeader("Recent runs"));
 			Card card = new Card(new BorderLayout());
 			StackPanel rows = new StackPanel(4, 0);
+			Logbook.Run compared = comparedRun(b);
 			for (int i = b.runs.size() - 1; i >= 0 && i >= b.runs.size() - RECENT; i--)
 			{
-				rows.add(new RunRow(b.runs.get(i)));
+				Logbook.Run run = b.runs.get(i);
+				final long ended = run.endedAt;
+				rows.add(new RunRow(run, run == compared, () ->
+				{
+					comparedRun = pick(ended, b);
+					rebuildRecords();
+				}));
 			}
 			card.add(rows, BorderLayout.CENTER);
 			stack.add(card);
 		}
+		java.awt.Point keep = records.getViewport().getViewPosition();
 		replace(records, stack);
+		records.getViewport().setViewPosition(keep);
+	}
+
+	/** Choosing the latest run again goes back to following whatever run is latest. */
+	private static long pick(long ended, Logbook b)
+	{
+		return b.runs.get(b.runs.size() - 1).endedAt == ended ? 0 : ended;
+	}
+
+	/** The run the splits are set against: the one picked from the list, otherwise the latest. */
+	private Logbook.Run comparedRun(Logbook b)
+	{
+		if (comparedRun != 0)
+		{
+			for (Logbook.Run r : b.runs)
+			{
+				if (r.endedAt == comparedRun)
+				{
+					return r;
+				}
+			}
+		}
+		return b.runs.isEmpty() ? null : b.runs.get(b.runs.size() - 1);
+	}
+
+	/** Splits by stretches of seven: your best cape, your best ever and the chosen run against the cape. */
+	private void buildSplits(StackPanel stack, Logbook b)
+	{
+		Logbook.Run run = comparedRun(b);
+		Splits splits = Splits.of(b.runs, run);
+		boolean cape = splits.getPbTicks() > 0;
+		boolean latest = run == b.runs.get(b.runs.size() - 1);
+		stack.add(new SectionHeader("Splits", (latest ? "last run" : "run of " + Format.day(run.endedAt)) + ", wave " + run.wave));
+		Card card = new Card(new BorderLayout(0, 6));
+		StackPanel rows = new StackPanel(1, 0);
+		rows.add(cape ? SplitRow.header("WAVES", "CAPE", "BEST", "RUN") : SplitRow.header("WAVES", "BEST", "RUN"));
+		for (Splits.Stretch s : splits.getStretches())
+		{
+			String best = s.getBest() > 0 ? Format.ticks(s.getBest()) : null;
+			String ran = s.getRun() > 0 ? Format.ticks(s.getRun()) : null;
+			boolean gold = s.getRun() > 0 && s.getRun() == s.getBest();
+			java.awt.Color label = gold ? Theme.GOLD_BRIGHT : s.getRun() > 0 ? Theme.TEXT : Theme.TEXT_FAINT;
+			if (cape)
+			{
+				rows.add(new SplitRow(s.label(), new String[]{Format.ticks(s.getPb()), best}, s.versusPb(), label));
+			}
+			else
+			{
+				rows.add(SplitRow.plain(s.label(), label, best, ran));
+			}
+		}
+		card.add(rows, BorderLayout.CENTER);
+		card.add(Ui.wrapped(splitsNote(splits, cape), Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.SOUTH);
+		card.accent(Theme.GOLD);
+		stack.add(card);
+	}
+
+	private static String splitsNote(Splits splits, boolean cape)
+	{
+		String gold = " A gilt stretch is your best ever.";
+		if (!cape)
+		{
+			return splits.getSumOfBest() > 0 ? "Every wave at its best adds up to " + Format.ticks(splits.getSumOfBest()) + "." + gold
+				: "Times per stretch fill in as runs get through them; with a cape the run is raced against it." + gold;
+		}
+		if (splits.onTheTable() <= 0)
+		{
+			return "Your best cape is your best on every wave." + gold;
+		}
+		String note = "Every wave at its best adds up to " + Format.ticks(splits.getSumOfBest()) + ", " + Format.ticks(splits.onTheTable())
+			+ " under your best cape.";
+		Splits.Stretch most = splits.mostToGain();
+		if (most != null)
+		{
+			note += " Most to win back in waves " + most.label() + " (" + Format.ticks(most.toGain()) + ").";
+		}
+		return note;
 	}
 }

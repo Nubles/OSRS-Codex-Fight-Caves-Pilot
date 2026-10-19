@@ -2,6 +2,7 @@ package com.codex.fightcaves;
 
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.Chase;
+import com.codex.fightcaves.core.Compare;
 import com.codex.fightcaves.core.Grid;
 import com.codex.fightcaves.core.KillOrder;
 import com.codex.fightcaves.core.Logbook;
@@ -9,9 +10,11 @@ import com.codex.fightcaves.core.Monster;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerCall;
 import com.codex.fightcaves.core.PrayerPacer;
+import com.codex.fightcaves.core.Rehearsal;
 import com.codex.fightcaves.core.Protect;
 import com.codex.fightcaves.core.RotationTracker;
 import com.codex.fightcaves.core.Spawn;
+import com.codex.fightcaves.core.Splits;
 import com.codex.fightcaves.core.StandPlanner;
 import com.codex.fightcaves.core.Waves;
 import com.codex.fightcaves.core.WeaponRange;
@@ -176,6 +179,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private StandPlanner.Spot nextSpot;
 	private int nextSpotWave;
 	private String lastViewKey;
+
+	/** Walkable tiles of the cave's map square, [x][y], read once per copy of the cave. */
+	private boolean[][] floor;
+	/** The next wave played out in scene tiles, for the floor, and in the cave's own tiles, for the panel. */
+	private Rehearsal rehearsal;
+	private Rehearsal rehearsalCave;
+	/** What the rehearsal was worked out for, so it is only redone when the wave or the tile changes. */
+	private String rehearsalKey;
+	/** Why the gilt tile beats where you stand, or null. */
+	private Compare compare;
 
 	private static final class Sighting
 	{
@@ -481,7 +494,17 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		health.clear();
 		call = null;
 		order = java.util.Collections.emptyList();
+		floor = null;
+		clearRehearsal();
+		compare = null;
 		caveOverlay.show(Marks.NONE);
+	}
+
+	private void clearRehearsal()
+	{
+		rehearsal = null;
+		rehearsalCave = null;
+		rehearsalKey = null;
 	}
 
 	private void buildGrid()
@@ -495,6 +518,32 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 		grid = new Grid(maps[wv.getPlane()].getFlags());
 		caveMap = new CaveMap(book.anchors);
+		floor = readFloor();
+	}
+
+	/** Which tiles of the cave's map square are open floor, for the panel's map of the cave. */
+	private boolean[][] readFloor()
+	{
+		boolean[][] f = new boolean[64][64];
+		for (int x = 0; x < grid.getWidth(); x++)
+		{
+			for (int y = 0; y < grid.getHeight(); y++)
+			{
+				int[] c = caveLocal(new int[]{x, y});
+				if (c != null && c[0] >= 0 && c[1] >= 0 && c[0] < 64 && c[1] < 64)
+				{
+					f[c[0]][c[1]] = grid.walkable(x, y);
+				}
+			}
+		}
+		return f;
+	}
+
+	/** A scene tile as a tile of the cave's map square, counted from its south-west corner, or null. */
+	private int[] caveLocal(int[] scene)
+	{
+		WorldPoint p = cave(scene[0], scene[1]);
+		return p == null ? null : new int[]{p.getX() - CaveMap.BASE_X, p.getY() - CaveMap.BASE_Y};
 	}
 
 	/** A scene tile in the cave's own coordinates, which stay put from one copy of the cave to the next. */
@@ -804,6 +853,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (grid == null || me == null || me.getLocalLocation() == null || book.active == null)
 		{
 			caveOverlay.show(Marks.NONE);
+			clearRehearsal();
+			compare = null;
 			return;
 		}
 		int px = me.getLocalLocation().getSceneX();
@@ -868,11 +919,13 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				nextSpot = StandPlanner.plan(grid, next, px, py, weaponRange);
 				nextSpotWave = wave + 1;
 			}
+			rehearse(next, wave + 1, px, py);
 		}
 		else
 		{
 			nextSpot = null;
 			nextSpotWave = 0;
+			clearRehearsal();
 		}
 
 		List<NPC> stuck = new ArrayList<>();
@@ -895,6 +948,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			stand = new Marks.Stand(spot.getX(), spot.getY(), spot == nextSpot, spot.safeFromRange());
 		}
+		compare = spot != null && config.standTile() ? Compare.of(StandPlanner.score(grid, foesOf(spot), px, py, 0, weaponRange), spot) : null;
 		Map<NPC, Integer> ranks = new HashMap<>();
 		for (int i = 0; i < order.size(); i++)
 		{
@@ -904,7 +958,43 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				ranks.put((NPC) t.getFoe().getTag(), i + 1);
 			}
 		}
-		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck, ranks));
+		caveOverlay.show(new Marks(stand, config.nextSpawns() ? ghosts : java.util.Collections.emptyList(), stuck, ranks, rehearsal));
+	}
+
+	/**
+	 * Plays the next wave out from its spawn points to the tile you will stand on: the teal
+	 * tile when there is one, otherwise where you are. Only redone when the wave, the tile or
+	 * your weapon changes, so the panel's replay is not restarted every few ticks.
+	 */
+	private void rehearse(List<StandPlanner.Foe> next, int wave, int px, int py)
+	{
+		if (!config.rehearse() || next.isEmpty())
+		{
+			clearRehearsal();
+			return;
+		}
+		StandPlanner.Spot target = nextSpot != null && nextSpotWave == wave ? nextSpot : null;
+		int sx = target != null ? target.getX() : px;
+		int sy = target != null ? target.getY() : py;
+		String key = wave + ":" + sx + "," + sy + ":" + weaponRange + ":" + next.size();
+		if (key.equals(rehearsalKey))
+		{
+			return;
+		}
+		rehearsalKey = key;
+		rehearsal = Rehearsal.of(grid, next, sx, sy, weaponRange);
+		rehearsalCave = rehearsal.map(this::caveLocal);
+	}
+
+	/** The creatures a spot was worked out against. */
+	private static List<StandPlanner.Foe> foesOf(StandPlanner.Spot spot)
+	{
+		List<StandPlanner.Foe> list = new ArrayList<>();
+		for (StandPlanner.Outcome o : spot.getOutcomes())
+		{
+			list.add(o.getFoe());
+		}
+		return list;
 	}
 
 	/** The spot to show: the next wave's once the wave on now is all but done, otherwise the live one. */
@@ -1111,20 +1201,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			you = fraction(me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY());
 		}
-		Integer versus = null;
-		if (a != null && wave > 1 && book.capes > 0)
-		{
-			int best = book.bestSplit(wave - 1);
-			if (best > 0)
-			{
-				versus = a.waveStartTick - best;
-			}
-		}
+		// Raced against your best cape at the end of the last wave cleared.
+		Integer versus = a != null && wave > 1 ? Splits.versusPb(book.runs, wave - 1, a.waveStartTick) : null;
+		int[] youTile = me != null && me.getLocalLocation() != null && grid != null
+			? caveLocal(new int[]{me.getLocalLocation().getSceneX(), me.getLocalLocation().getSceneY()}) : null;
 		int rotation = tracker.rotation();
 		List<Placement> observed = observedWave == wave ? observed() : java.util.Collections.emptyList();
 		return new View(View.State.IN_CAVE, wave, rotation, tracker.candidates(), tracker.decidingWave(wave + 1), tracker.clean(),
 			aliveFoes().size(), stand, you, pace, prayer, level, pacer.learned(), 0, a == null ? 0 : a.ticks, versus, copy(book))
-			.withObserved(observed).withFight(callView(), killsView());
+			.withObserved(observed).withFight(callView(), killsView())
+			.withRehearsal(config.rehearse() ? rehearsalCave : null, floor, youTile)
+			.withCompare(compare)
+			.withSplits(a == null ? null : Splits.recent(book.runs, a.splits, 3));
 	}
 
 	private View.Call callView()
@@ -1210,6 +1298,20 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (spot != null)
 		{
 			k.append(spot.getX()).append(',').append(spot.getY()).append(spot == nextSpot);
+		}
+		k.append('r').append(rehearsalKey);
+		Compare cmp = compare;
+		if (cmp != null)
+		{
+			k.append('c').append(cmp.getHeadline());
+			for (Compare.Row r : cmp.getRows())
+			{
+				k.append(r.getHere()).append(r.getThere());
+			}
+		}
+		if (book != null && book.active != null)
+		{
+			k.append('s').append(book.active.splits.size());
 		}
 		if (inCave)
 		{
