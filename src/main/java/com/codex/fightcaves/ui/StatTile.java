@@ -28,6 +28,12 @@ class StatTile extends JComponent
 		setToolTipText(note == null || note.isEmpty() ? label : label + ": " + note);
 	}
 
+	/** The big figure, for tests. */
+	String value()
+	{
+		return value;
+	}
+
 	@Override
 	protected void paintComponent(Graphics graphics)
 	{

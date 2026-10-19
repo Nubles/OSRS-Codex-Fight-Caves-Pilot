@@ -267,6 +267,12 @@ public class PilotPanel extends PluginPanel
 	}
 
 	/** True when a page holds only the stepped-back card, for tests. */
+	/** The Records page, for tests. */
+	JScrollPane recordsPage()
+	{
+		return records;
+	}
+
 	boolean steppedBack(int tab)
 	{
 		JScrollPane page = tab == 0 ? pilot : tab == 1 ? waves : records;
@@ -888,7 +894,7 @@ public class PilotPanel extends PluginPanel
 		String usualNote = usual < 0 ? "no cape yet" : view.state != View.State.OUTSIDE && b.bestTicks > 0
 			? "best " + Format.ticks(b.bestTicks) : timed == 1 ? "your one timed cape" : "middle cape";
 		tiles.add(new StatTile(b.attempts > 0 ? Form.percent(b.capes, b.attempts) + "%" : "-", "Cape rate", b.attempts > 0 ? "of every run" : "no runs yet", Theme.GOLD_BRIGHT));
-		tiles.add(new StatTile(Format.count(b.attempts), "Runs", "since installing", Theme.TEXT));
+		tiles.add(new StatTile(b.attempts > 0 ? Format.count(b.attempts) : "-", "Runs", "since installing", Theme.TEXT));
 		tiles.add(new StatTile(usual < 0 ? "-" : Format.ticks(usual), "Usual cape", usualNote, Theme.GREEN));
 		tiles.add(new StatTile(b.furthest > 0 ? String.valueOf(b.furthest) : "-", "Furthest", "wave reached", Theme.EMBER));
 		stack.add(tiles);
