@@ -189,11 +189,26 @@ public final class Outlook
 		}
 		String prefix = rotation + ":";
 		String any = null;
+		int anyReach = Integer.MAX_VALUE;
 		for (java.util.Map.Entry<String, String> e : outlooks.entrySet())
 		{
-			// The lowest reach first, so the answer does not depend on the map's order.
-			if (e.getKey().startsWith(prefix) && (any == null || e.getKey().compareTo(any) < 0))
+			if (!e.getKey().startsWith(prefix))
 			{
+				continue;
+			}
+			int r;
+			try
+			{
+				r = Integer.parseInt(e.getKey().substring(prefix.length()));
+			}
+			catch (NumberFormatException ignored)
+			{
+				continue;
+			}
+			// The lowest reach first, by number, so the answer does not depend on the map's order.
+			if (r < anyReach)
+			{
+				anyReach = r;
 				any = e.getKey();
 			}
 		}

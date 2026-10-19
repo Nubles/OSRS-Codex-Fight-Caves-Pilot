@@ -119,6 +119,11 @@ public class OutlookTest
 		assertEquals("one", Outlook.saved(saved, 3, 4));
 		assertNull(Outlook.saved(saved, 4, 7));
 		assertNull(Outlook.saved(null, 3, 7));
+		// "Lowest reach" is by number: a staff's 10 is not below a blowpipe's 5.
+		Map<String, String> reaches = new HashMap<>();
+		reaches.put("3:10", "staff");
+		reaches.put("3:5", "blowpipe");
+		assertEquals("blowpipe", Outlook.saved(reaches, 3, 0));
 		assertFalse("13:7".startsWith("3:"));
 	}
 }

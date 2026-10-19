@@ -1036,8 +1036,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				liveSpot = best;
 			}
 		}
-		if (foes.isEmpty())
+		if (foes.isEmpty() || jad)
 		{
+			// On Jad's wave no tile is offered: one left over from the wave before would read as
+			// where to stand against him.
 			liveSpot = null;
 		}
 		// Jad is yours to read: no prayer call and no kill order on his wave.
@@ -1076,7 +1078,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 
 		List<NPC> stuck = new ArrayList<>();
-		if (config.stuckTags())
+		// Jad counts as a ranged creature, but saying he is stuck behind a pillar would be telling
+		// you how to fight him, so his wave gets no tags.
+		if (config.stuckTags() && !jad)
 		{
 			for (NPC npc : alive)
 			{

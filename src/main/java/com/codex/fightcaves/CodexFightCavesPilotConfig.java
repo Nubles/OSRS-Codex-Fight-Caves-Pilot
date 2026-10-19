@@ -68,7 +68,7 @@ public interface CodexFightCavesPilotConfig extends Config
 	@ConfigItem(
 		keyName = "stuckTags",
 		name = "Tag stuck creatures",
-		description = "Label rangers and magers that are stuck behind a pillar and cannot hit you where you stand",
+		description = "Label rangers and magers that are stuck behind a pillar and cannot hit you where you stand. Not shown on the Jad wave",
 		position = 5
 	)
 	default boolean stuckTags()
