@@ -1,5 +1,9 @@
 package com.codex.fightcaves.core;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -94,7 +98,121 @@ public final class Logbook
 	/** When that was, in epoch milliseconds. */
 	public long bankSeenAt;
 
-	/** A list with every gap read as 0, or an empty one. */
+	/**
+	 * The logbook saved as {@code json}, or a fresh one when there is none or nothing in it can be
+	 * read. A save damaged in one place (a figure of the wrong type, a run from a newer version)
+	 * keeps everything else: what cannot be read is left out, a field or a run at a time.
+	 */
+	public static Logbook read(Gson gson, String json)
+	{
+		if (json == null || json.trim().isEmpty())
+		{
+			return new Logbook();
+		}
+		Logbook whole = parse(gson, json);
+		if (whole != null)
+		{
+			return whole;
+		}
+		JsonObject root;
+		try
+		{
+			JsonElement e = gson.fromJson(json, JsonElement.class);
+			root = e != null && e.isJsonObject() ? e.getAsJsonObject() : null;
+		}
+		catch (RuntimeException e)
+		{
+			root = null;
+		}
+		if (root == null)
+		{
+			return new Logbook();
+		}
+		salvage(gson, root, null);
+		Logbook kept = parse(gson, root);
+		return kept == null ? new Logbook() : kept;
+	}
+
+	/** The logbook in {@code json} (a string or a tree), repaired, or null when it does not read. */
+	private static Logbook parse(Gson gson, Object json)
+	{
+		try
+		{
+			Logbook read = json instanceof JsonElement ? gson.fromJson((JsonElement) json, Logbook.class)
+				: gson.fromJson((String) json, Logbook.class);
+			return read == null ? null : read.repair();
+		}
+		catch (RuntimeException e)
+		{
+			// Gson lets some through unwrapped: a NumberFormatException for "garbage" in a double field.
+			return null;
+		}
+	}
+
+	/**
+	 * Drops what does not read from {@code obj}: a whole field, one run of the list, or one field
+	 * of a run or of the run on now. {@code within} is the logbook field {@code obj} sits in ("runs"
+	 * or "active"), or null for the logbook itself; each piece is tried alone, placed where it belongs.
+	 */
+	private static void salvage(Gson gson, JsonObject obj, String within)
+	{
+		for (String key : new ArrayList<>(obj.keySet()))
+		{
+			JsonElement value = obj.get(key);
+			if (within == null && "runs".equals(key) && value.isJsonArray())
+			{
+				JsonArray good = new JsonArray();
+				for (JsonElement run : value.getAsJsonArray())
+				{
+					if (run.isJsonObject())
+					{
+						salvage(gson, run.getAsJsonObject(), "runs");
+						good.add(run);
+					}
+				}
+				obj.add(key, good);
+				continue;
+			}
+			if (within == null && "active".equals(key) && value.isJsonObject())
+			{
+				salvage(gson, value.getAsJsonObject(), "active");
+				continue;
+			}
+			JsonObject alone = new JsonObject();
+			alone.add(key, value);
+			JsonObject probe = alone;
+			if ("runs".equals(within))
+			{
+				JsonArray list = new JsonArray();
+				list.add(alone);
+				probe = new JsonObject();
+				probe.add("runs", list);
+			}
+			else if ("active".equals(within))
+			{
+				probe = new JsonObject();
+				probe.add("active", alone);
+			}
+			if (parse(gson, probe) == null)
+			{
+				obj.remove(key);
+			}
+		}
+	}
+
+	/** True for a figure that saves as JSON and is not below zero. */
+	private static boolean usable(double v)
+	{
+		return !Double.isNaN(v) && !Double.isInfinite(v) && v >= 0;
+	}
+
+	/** {@code v} held between lo and hi. */
+	private static int clamp(int v, int lo, int hi)
+	{
+		return Math.max(lo, Math.min(hi, v));
+	}
+
+	/** A per-wave list with every gap or figure below zero read as 0, cut at the last wave, or an empty one. */
 	private static List<Integer> filled(List<Integer> list)
 	{
 		List<Integer> out = new ArrayList<>();
@@ -102,13 +220,30 @@ public final class Logbook
 		{
 			for (Integer v : list)
 			{
-				out.add(v == null ? 0 : v);
+				if (out.size() == Waves.LAST)
+				{
+					break;
+				}
+				out.add(v == null || v < 0 ? 0 : v);
 			}
 		}
 		return out;
 	}
 
-	/** Fills in anything an older save left out. */
+	/** Every figure below zero read as 0. */
+	private static void noneBelowZero(int[] counts)
+	{
+		for (int i = 0; i < counts.length; i++)
+		{
+			counts[i] = Math.max(0, counts[i]);
+		}
+	}
+
+	/**
+	 * Fills in anything an older save left out, and puts right what a damaged or hand-edited one
+	 * holds: gaps, figures below zero or out of range, more runs than are kept, and figures that
+	 * could not be saved again (not a number, or infinite).
+	 */
 	public Logbook repair()
 	{
 		if (runs == null)
@@ -135,6 +270,16 @@ public final class Logbook
 		{
 			outlooks = new HashMap<>();
 		}
+		noneBelowZero(deaths);
+		noneBelowZero(rotations);
+		attempts = Math.max(0, attempts);
+		capes = Math.max(0, capes);
+		bestTicks = Math.max(0, bestTicks);
+		furthest = clamp(furthest, 0, Waves.LAST);
+		if (bankDoses < 0)
+		{
+			bankDoses = -1;
+		}
 		// A hand-edited or damaged save can hold gaps; a gap reads as untimed or unhurt.
 		if (runs.contains(null))
 		{
@@ -149,12 +294,29 @@ public final class Logbook
 			{
 				r.fallHp = null;
 			}
+			// A way of ending a run this version does not know reads as walking out.
+			if (r.result == null)
+			{
+				r.result = Result.LEFT;
+			}
+			r.wave = clamp(r.wave, 0, Waves.LAST);
+			r.firstWave = clamp(r.firstWave, 0, Waves.LAST);
+			r.ticks = Math.max(0, r.ticks);
+			r.dosesUsed = Math.max(0, r.dosesUsed);
+			if (r.rotation < 0 || r.rotation > Rotations.COUNT)
+			{
+				r.rotation = 0;
+			}
 		}
-		if (prayerHitpoints <= 0)
+		trim();
+		if (!usable(prayerSpent) || !usable(prayerHitpoints) || prayerHitpoints <= 0)
 		{
 			prayerSpent = PrayerPacer.PRIOR_RATE * PrayerPacer.PRIOR_WEIGHT;
 			prayerHitpoints = PrayerPacer.PRIOR_WEIGHT;
 		}
+		// An anchor that is not three plain figures would not save again.
+		anchors.values().removeIf(a -> a == null || a.length != 3 || !usable(a[0]) || !usable(a[1]) || !usable(a[2]));
+		outlooks.values().removeIf(java.util.Objects::isNull);
 		// A spawn code that does not decode would throw each time it is read back.
 		corrections.values().removeIf(codes -> !Spawn.areCodes(codes));
 		if (active != null)
@@ -166,8 +328,42 @@ public final class Logbook
 				active.seen = new HashMap<>();
 			}
 			active.seen.values().removeIf(codes -> !Spawn.areCodes(codes));
+			active.seen.keySet().removeIf(w -> w == null || w < 1 || w > Waves.LAST);
+			active.wave = clamp(active.wave, 1, Waves.LAST);
+			active.firstWave = clamp(active.firstWave, 0, Waves.LAST);
+			active.ticks = Math.max(0, active.ticks);
+			active.waveStartTick = clamp(active.waveStartTick, 0, active.ticks);
+			active.dosesUsed = Math.max(0, active.dosesUsed);
+			if (active.rotation < 0 || active.rotation > Rotations.COUNT)
+			{
+				active.rotation = 0;
+			}
 		}
 		return this;
+	}
+
+	/** Drops the oldest runs past {@link #KEEP_RUNS}, but never your best cape: the splits race it. */
+	private void trim()
+	{
+		if (runs.size() <= KEEP_RUNS)
+		{
+			return;
+		}
+		Run pb = Splits.personalBest(runs);
+		List<Run> kept = new ArrayList<>();
+		int drop = runs.size() - KEEP_RUNS;
+		for (Run r : runs)
+		{
+			if (drop > 0 && r != pb)
+			{
+				drop--;
+			}
+			else
+			{
+				kept.add(r);
+			}
+		}
+		runs = kept;
 	}
 
 	/** Closes the run in progress and files it. */
@@ -189,19 +385,7 @@ public final class Logbook
 		run.partial = active.partial;
 		run.firstWave = active.firstWave;
 		runs.add(run);
-		// Drop the oldest runs, but never your best cape: the splits race it.
-		Run pb = Splits.personalBest(runs);
-		for (int i = 0; runs.size() > KEEP_RUNS && i < runs.size(); )
-		{
-			if (runs.get(i) == pb)
-			{
-				i++;
-			}
-			else
-			{
-				runs.remove(i);
-			}
-		}
+		trim();
 		attempts++;
 		furthest = Math.max(furthest, active.wave);
 		if (result == Result.CAPE)

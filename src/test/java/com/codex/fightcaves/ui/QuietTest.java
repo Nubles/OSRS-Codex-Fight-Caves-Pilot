@@ -104,6 +104,28 @@ public class QuietTest
 		});
 	}
 
+	@Test
+	public void aDamagedSaveCannotOpenJadsWave() throws Exception
+	{
+		// A run saved past the last wave (a hand-edited or damaged save) is read as Jad's wave,
+		// so it steps back rather than drawing a wave 64 or 9999 in full.
+		Logbook book = Logbook.read(net.runelite.http.api.RuneLiteAPI.GSON,
+			"{\"active\":{\"wave\":9999,\"rotation\":99,\"ticks\":-5,\"splits\":[1,2,3]},\"runs\":[]}");
+		assertTrue(book.active.wave == Waves.JAD);
+		assertTrue(inCave(book).quiet());
+		javax.swing.SwingUtilities.invokeAndWait(() ->
+		{
+			PilotPanel panel = new PilotPanel();
+			panel.update(inCave(book));
+			for (int tab = 0; tab < 3; tab++)
+			{
+				assertTrue(panel.steppedBack(tab));
+			}
+			assertFalse(contains(panel, StatTile.class));
+			assertFalse(contains(panel, CaveChart.class));
+		});
+	}
+
 	private static boolean contains(java.awt.Component c, Class<?> type)
 	{
 		if (type.isInstance(c))

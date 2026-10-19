@@ -44,7 +44,7 @@ public final class Banked
 	public Banked(long doses, long savedAt, Source source)
 	{
 		this.doses = Math.max(0, doses);
-		this.savedAt = savedAt;
+		this.savedAt = Math.max(0, savedAt);
 		this.source = source;
 	}
 
@@ -72,7 +72,7 @@ public final class Banked
 		{
 			if (e.getKey() != null && e.getValue() != null && e.getValue() > 0)
 			{
-				n += doses(e.getKey()) * e.getValue();
+				n += doses(e.getKey()) * Math.min(e.getValue(), Integer.MAX_VALUE);
 			}
 		}
 		return n;
@@ -104,7 +104,7 @@ public final class Banked
 		for (Map.Entry<String, JsonElement> e : list.getAsJsonObject().entrySet())
 		{
 			Integer id = integer(e.getKey());
-			Long qty = number(e.getValue());
+			Long qty = quantity(e.getValue());
 			if (id != null && qty != null && qty > 0)
 			{
 				n += doses(id) * qty;
@@ -117,6 +117,17 @@ public final class Banked
 	/** The newer of two counts, either of which may be null. The pilot's own wins a tie. */
 	public static Banked newest(Banked own, Banked steward)
 	{
+		return newest(own, steward, Long.MAX_VALUE);
+	}
+
+	/**
+	 * The newer of two counts as of {@code now}. A time more than a day past now (a clock set
+	 * wrong when it was saved) reads as unknown, so it neither wins for ever nor reads as "just now".
+	 */
+	public static Banked newest(Banked own, Banked steward, long now)
+	{
+		own = own == null ? null : own.seenBy(now);
+		steward = steward == null ? null : steward.seenBy(now);
 		if (own == null)
 		{
 			return steward;
@@ -126,6 +137,12 @@ public final class Banked
 			return own;
 		}
 		return steward.savedAt > own.savedAt ? steward : own;
+	}
+
+	/** This count, with its time read as unknown when it is more than a day past {@code now}. */
+	private Banked seenBy(long now)
+	{
+		return savedAt > now + 86_400_000L && now != Long.MAX_VALUE ? new Banked(doses, 0, source) : this;
 	}
 
 	/** Whole runs the doses cover, at so many doses a run; 0 when the need is not known. */
@@ -150,6 +167,17 @@ public final class Banked
 		return source;
 	}
 
+	/** A count no bigger than the biggest stack the game holds, or null when it is not a number. */
+	private static Long quantity(JsonElement e)
+	{
+		Long n = number(e);
+		return n == null ? null : Math.min(n, Integer.MAX_VALUE);
+	}
+
+	/**
+	 * A whole number, or null when it is not one. A figure past what a long holds reads as the
+	 * most a long holds, not wrapped round to a small or negative one.
+	 */
 	private static Long number(JsonElement e)
 	{
 		if (e == null || !e.isJsonPrimitive() || !e.getAsJsonPrimitive().isNumber())
@@ -158,9 +186,18 @@ public final class Banked
 		}
 		try
 		{
-			return e.getAsLong();
+			java.math.BigDecimal d = e.getAsBigDecimal();
+			if (d.compareTo(java.math.BigDecimal.valueOf(Long.MAX_VALUE)) > 0)
+			{
+				return Long.MAX_VALUE;
+			}
+			if (d.compareTo(java.math.BigDecimal.valueOf(Long.MIN_VALUE)) < 0)
+			{
+				return Long.MIN_VALUE;
+			}
+			return d.longValue();
 		}
-		catch (NumberFormatException ex)
+		catch (NumberFormatException | ArithmeticException ex)
 		{
 			return null;
 		}

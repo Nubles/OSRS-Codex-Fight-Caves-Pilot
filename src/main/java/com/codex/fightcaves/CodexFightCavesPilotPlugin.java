@@ -35,7 +35,6 @@ import com.codex.fightcaves.ui.Sigil;
 import com.codex.fightcaves.ui.Theme;
 import com.codex.fightcaves.ui.View;
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -1143,7 +1142,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			stewardBank = Banked.steward(gson, json);
 		}
 		Banked own = book == null || book.bankDoses < 0 ? null : new Banked(book.bankDoses, book.bankSeenAt, Banked.Source.PILOT);
-		return Banked.newest(own, stewardBank);
+		return Banked.newest(own, stewardBank, System.currentTimeMillis());
 	}
 
 	/** True for a banknote: noted sharks or potions carried are not food or doses to drink. */
@@ -1476,23 +1475,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			return;
 		}
-		try
-		{
-			String saved = configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY);
-			if (saved != null && !saved.isEmpty())
-			{
-				Logbook read = gson.fromJson(saved, Logbook.class);
-				book = read == null ? null : read.repair();
-			}
-		}
-		catch (JsonParseException e)
-		{
-			log.warn("Could not read the saved logbook, starting afresh", e);
-		}
-		if (book == null)
-		{
-			book = new Logbook();
-		}
+		book = Logbook.read(gson, configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY));
 		pacer = new PrayerPacer(book.prayerSpent, book.prayerHitpoints);
 		unsaved = false;
 		lastViewKey = null;
