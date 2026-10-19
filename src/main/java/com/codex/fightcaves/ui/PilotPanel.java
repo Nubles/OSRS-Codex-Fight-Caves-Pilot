@@ -1,15 +1,18 @@
 package com.codex.fightcaves.ui;
 
+import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.Damage;
 import com.codex.fightcaves.core.Logbook;
 import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerPacer;
+import com.codex.fightcaves.core.Ready;
 import com.codex.fightcaves.core.Rotations;
 import com.codex.fightcaves.core.Splits;
 import com.codex.fightcaves.core.Waves;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Color;
 import java.awt.GridLayout;
 import java.util.Collections;
 import java.util.List;
@@ -509,6 +512,11 @@ public class PilotPanel extends PluginPanel
 		{
 			stack.add(supplyCard(view.carried));
 		}
+		if (!view.ready.isEmpty())
+		{
+			stack.add(readyCard(view.ready));
+		}
+		stack.add(bankCard(view.banked, view.fullRunDoses, System.currentTimeMillis()));
 		if (!b.runs.isEmpty())
 		{
 			stack.add(new SectionHeader("Last run"));
@@ -524,6 +532,80 @@ public class PilotPanel extends PluginPanel
 		stack.add(new SectionHeader("How it reads the cave"));
 		stack.add(Ui.wrapped("Wave 1 narrows the 15 rotations to three and wave 2 nearly always settles it; rotations 7 and 8 wait for wave 4. Creatures are coloured by the prayer that answers them: ember melee, green range, violet magic.",
 			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+	}
+
+	/** The ready check: each line fine or not, under a title that says whether all are. */
+	private static Card readyCard(List<Ready.Line> lines)
+	{
+		int warnings = 0;
+		for (Ready.Line l : lines)
+		{
+			warnings += l.isOk() ? 0 : 1;
+		}
+		Card card = new Card(new BorderLayout(0, 4));
+		Color tone = warnings == 0 ? Theme.TEAL : Theme.EMBER;
+		card.add(Ui.label(warnings == 0 ? "Ready to go in" : warnings == 1 ? "One thing to check" : warnings + " things to check",
+			Theme.title(), tone), BorderLayout.NORTH);
+		StackPanel rows = new StackPanel(3, 0);
+		for (Ready.Line l : lines)
+		{
+			rows.add(new CheckRow(l.isOk(), l.getText(), WIDTH - 40));
+		}
+		card.add(rows, BorderLayout.CENTER);
+		card.accent(tone);
+		return card;
+	}
+
+	/** How many runs the potions in your bank cover, or how to have them counted. */
+	static Card bankCard(Banked banked, int perRun, long now)
+	{
+		Card card = new Card(new BorderLayout(0, 2));
+		if (banked == null)
+		{
+			card.add(Ui.label("In the bank", Theme.title(), Theme.GOLD), BorderLayout.NORTH);
+			card.add(Ui.wrapped("Open your bank once and the pilot counts how many runs your prayer potions and restores cover.",
+				Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.CENTER);
+			return card;
+		}
+		card.add(Ui.label(bankTitle(banked, perRun), Theme.title(), banked.runs(perRun) > 0 ? Theme.GOLD : Theme.EMBER), BorderLayout.NORTH);
+		card.add(Ui.wrapped(bankText(banked, perRun, now), Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
+		return card;
+	}
+
+	static String bankTitle(Banked banked, int perRun)
+	{
+		long runs = banked.runs(perRun);
+		if (banked.getDoses() == 0)
+		{
+			return "No prayer doses banked";
+		}
+		if (runs == 0)
+		{
+			return "Under a run in the bank";
+		}
+		return (runs == 1 ? "1 run" : runs + " runs") + " in the bank";
+	}
+
+	/** "120 doses in the bank, at about 24 a run. Counted 3 hours ago." */
+	static String bankText(Banked banked, int perRun, long now)
+	{
+		String seen = banked.getSavedAt() <= 0 ? "" : (banked.getSource() == Banked.Source.BANK_STEWARD
+			? " From Codex Bank Steward, " + Format.ago(banked.getSavedAt(), now) + "."
+			: " Counted " + Format.ago(banked.getSavedAt(), now) + ".");
+		if (banked.getSource() == Banked.Source.BANK_STEWARD && banked.getSavedAt() <= 0)
+		{
+			seen = " From Codex Bank Steward.";
+		}
+		String text = Format.doses((int) Math.min(Integer.MAX_VALUE, banked.getDoses())) + " of prayer potion, super restore and sanfew serum";
+		if (perRun > 0)
+		{
+			text += ", against about " + perRun + " a run at your rate, Jad's share included.";
+		}
+		else
+		{
+			text += ".";
+		}
+		return text + seen;
 	}
 
 	/** What you carry against a whole run: enough, with how many spare, or how many short. */

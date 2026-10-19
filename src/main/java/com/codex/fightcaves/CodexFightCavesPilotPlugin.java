@@ -1,9 +1,11 @@
 package com.codex.fightcaves;
 
+import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.Chase;
 import com.codex.fightcaves.core.Compare;
 import com.codex.fightcaves.core.Damage;
+import com.codex.fightcaves.core.EarlyCall;
 import com.codex.fightcaves.core.Fall;
 import com.codex.fightcaves.core.Grid;
 import com.codex.fightcaves.core.KillOrder;
@@ -16,6 +18,7 @@ import com.codex.fightcaves.core.PrayerPacer;
 import com.codex.fightcaves.core.Presence;
 import com.codex.fightcaves.core.Rehearsal;
 import com.codex.fightcaves.core.Protect;
+import com.codex.fightcaves.core.Ready;
 import com.codex.fightcaves.core.RotationTracker;
 import com.codex.fightcaves.core.Spawn;
 import com.codex.fightcaves.core.Splits;
@@ -75,6 +78,7 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
@@ -143,6 +147,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private final PilotPlaque plaque = new PilotPlaque();
 	private final RotationTracker tracker = new RotationTracker();
 	private final Presence presence = new Presence();
+	/** A wave call heard on the tick you were moved in, before your tile said so. */
+	private final EarlyCall earlyCall = new EarlyCall();
 	/** The last ten seconds or so of the wave on now, for the review if you fall. */
 	private final Fall fall = new Fall();
 	/** Damage taken since the last tick was filed. */
@@ -191,6 +197,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	/** Weapon item id to how far it attacks from. */
 	private final Map<Integer, Integer> rangeCache = new HashMap<>();
 	private int weaponRange = WeaponRange.DEFAULT;
+	/** What you wield, by name, or null; and the ammunition in your quiver. */
+	private String weaponName;
+	private int ammo;
+	/** Pieces of food carried, and item id to whether it is food. */
+	private int foodCount;
+	private final Map<Integer, Boolean> foodCache = new HashMap<>();
+	/** Bank Steward's shared bank as last read, parsed again only when it changes. */
+	private String stewardJson;
+	private Banked stewardBank;
 	private PrayerCall call;
 	private List<KillOrder.Target> order = java.util.Collections.emptyList();
 
@@ -292,6 +307,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			case LOGIN_SCREEN:
 			case HOPPING:
 				jadExitTick = -1;
+				// The next account, or this one after playing elsewhere, may carry something else:
+				// the first inventory seen after logging in is the new base, not doses drunk.
+				lastDoses = -1;
+				earlyCall.clear();
 				save();
 				resetCave();
 				inCave = false;
@@ -300,6 +319,21 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				break;
 			default:
 				break;
+		}
+	}
+
+	@Subscribe
+	public void onClientShutdown(ClientShutdown event)
+	{
+		// The logbook is otherwise saved once a minute; closing the client must not lose the
+		// last of a run. Saved here, before RuneLite sends its config on.
+		try
+		{
+			save();
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("Could not save the logbook on shutdown", e);
 		}
 	}
 
@@ -314,7 +348,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()))
+		// The logbook itself is saved under the same group; its own saves need no redraw.
+		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()) && !LOGBOOK_KEY.equals(event.getKey());
+		boolean steward = Banked.STEWARD_GROUP.equals(event.getGroup()) && Banked.STEWARD_KEY.equals(event.getKey());
+		if (ours || steward)
 		{
 			clientThread.invokeLater(() -> publish(true));
 		}
@@ -323,13 +360,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onNpcSpawned(NpcSpawned event)
 	{
-		if (!inCave)
-		{
-			return;
-		}
+		// Kept even before you are seen inside: on the tick you are moved in, the first spawns
+		// can come before your tile does. Only the cave's own creatures are kept, and only for
+		// a few ticks unless a wave call claims them.
 		NPC npc = event.getNpc();
 		Monster m = Monster.of(npc.getName(), npc.getCombatLevel());
-		if (m != null)
+		if (m != null && book != null)
 		{
 			sightings.add(new Sighting(npc, m, tick));
 		}
@@ -373,6 +409,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			countDoses(event.getItemContainer());
 		}
+		else if (event.getContainerId() == InventoryID.BANK)
+		{
+			seeBank(event.getItemContainer());
+		}
 		else if (event.getContainerId() == InventoryID.WORN)
 		{
 			readWeapon(event.getItemContainer());
@@ -387,14 +427,19 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		String text = TAGS.matcher(event.getMessage()).replaceAll("");
-		if (inCave)
+		Matcher wave = WAVE.matcher(text);
+		if (wave.find() && book != null)
 		{
-			Matcher wave = WAVE.matcher(text);
-			if (wave.find())
+			if (inCave || arriveNow())
 			{
 				onWave(Integer.parseInt(wave.group(1)));
-				return;
 			}
+			else
+			{
+				// Possibly the cave's first call, sent before your new tile could be read.
+				earlyCall.hear(Integer.parseInt(wave.group(1)), tick);
+			}
+			return;
 		}
 		if (KILL_COUNT.matcher(text).find() && book != null && book.active != null && (inCave || jadExitTick >= 0))
 		{
@@ -433,6 +478,12 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (change == Presence.Change.ENTERED)
 		{
 			enterCave();
+			inCave = true;
+			int early = earlyCall.take(tick);
+			if (early > 0)
+			{
+				onWave(early);
+			}
 		}
 		else if (change == Presence.Change.LEFT)
 		{
@@ -491,6 +542,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				stepOutlook();
 			}
 		}
+		else if (!inCave)
+		{
+			pruneSightings();
+		}
 		if (tick % SAVE_TICKS == 0)
 		{
 			save();
@@ -517,9 +572,28 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		return p != null && p.getRegionID() == FIGHT_CAVE_REGION;
 	}
 
+	/**
+	 * True when you are in the cave by your own tile, though the tick that says so has not come
+	 * yet: entering there and then, so a wave call on that very tick is not lost.
+	 */
+	private boolean arriveNow()
+	{
+		if (book == null || client.getGameState() != GameState.LOGGED_IN || !isInCave() || !presence.enterNow())
+		{
+			return false;
+		}
+		enterCave();
+		inCave = true;
+		earlyCall.clear();
+		return true;
+	}
+
 	private void enterCave()
 	{
+		// Creatures seen in the moment before you were placed belong to the wave about to be called.
+		List<Sighting> early = new ArrayList<>(sightings);
 		resetCave();
+		sightings.addAll(early);
 		tracker.reset();
 		Logbook.Active a = book.active;
 		if (a != null)
@@ -978,6 +1052,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	{
 		int prayerCount = 0;
 		int restoreCount = 0;
+		int food = 0;
 		if (inventory != null)
 		{
 			for (Item item : inventory.getItems())
@@ -985,6 +1060,10 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				if (item.getId() <= 0)
 				{
 					continue;
+				}
+				if (foodCache.computeIfAbsent(item.getId(), id -> Ready.isFood(itemManager.getItemComposition(id).getName())))
+				{
+					food += item.getQuantity();
 				}
 				int[] kind = doseCache.computeIfAbsent(item.getId(), this::doseKind);
 				if (kind[0] == 1)
@@ -1006,6 +1085,51 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		lastDoses = total;
 		prayerDoses = prayerCount;
 		restoreDoses = restoreCount;
+		foodCount = food;
+	}
+
+	/** The bank changed while open: count its doses for how many runs it covers. */
+	private void seeBank(ItemContainer bank)
+	{
+		if (bank == null || book == null)
+		{
+			return;
+		}
+		Map<Integer, Long> items = new HashMap<>();
+		for (Item item : bank.getItems())
+		{
+			if (item.getId() > 0 && item.getQuantity() > 0)
+			{
+				items.merge(item.getId(), (long) item.getQuantity(), Long::sum);
+			}
+		}
+		long doses = Banked.count(items);
+		long now = System.currentTimeMillis();
+		// Saved when the count moves, or now and then so "seen" stays honest across restarts.
+		if (doses != book.bankDoses || now - book.bankSeenAt > 10 * 60_000L)
+		{
+			unsaved = true;
+		}
+		book.bankDoses = doses;
+		book.bankSeenAt = now;
+	}
+
+	/** The doses in your bank: the pilot's own look or Bank Steward's, whichever is newer, or null. */
+	private Banked banked()
+	{
+		String json = configManager.getRSProfileConfiguration(Banked.STEWARD_GROUP, Banked.STEWARD_KEY);
+		if (json == null || json.isEmpty())
+		{
+			stewardJson = null;
+			stewardBank = null;
+		}
+		else if (!json.equals(stewardJson))
+		{
+			stewardJson = json;
+			stewardBank = Banked.steward(gson, json);
+		}
+		Banked own = book == null || book.bankDoses < 0 ? null : new Banked(book.bankDoses, book.bankSeenAt, Banked.Source.PILOT);
+		return Banked.newest(own, stewardBank);
 	}
 
 	private int[] doseKind(int itemId)
@@ -1259,11 +1383,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private void readWeapon(ItemContainer worn)
 	{
 		Item weapon = worn == null ? null : worn.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+		Item quiver = worn == null ? null : worn.getItem(EquipmentInventorySlot.AMMO.getSlotIdx());
+		ammo = quiver == null || quiver.getId() <= 0 ? 0 : quiver.getQuantity();
 		if (weapon == null || weapon.getId() <= 0)
 		{
 			weaponRange = 1;
+			weaponName = null;
 			return;
 		}
+		weaponName = itemManager.getItemComposition(weapon.getId()).getName();
 		weaponRange = rangeCache.computeIfAbsent(weapon.getId(), id -> WeaponRange.of(itemManager.getItemComposition(id).getName()));
 	}
 
@@ -1410,7 +1538,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				? pacer.pace(1, level, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
 			return new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, prayer, level,
 				pacer.learned(), full.getDosesNeeded(), 0, null, withBook ? copy(book) : null).withCarried(carried)
-				.withForecast(withBook ? Splits.forecast(book.runs, 1, 0, 0) : null);
+				.withForecast(withBook ? Splits.forecast(book.runs, 1, 0, 0) : null)
+				.withReady(Ready.check(level, weaponName, weaponRange, ammo, foodCount, prayerDoses + restoreDoses))
+				.withBanked(withBook ? banked() : null);
 		}
 		Logbook.Active a = book.active;
 		int wave = a == null ? 0 : a.wave;
@@ -1538,6 +1668,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			.append(book == null || book.active == null ? "" : book.active.wave + "/" + book.active.dosesUsed)
 			.append(prayerDoses).append('/').append(restoreDoses).append('/').append(client.getBoostedSkillLevel(Skill.PRAYER));
 		k.append('d').append(danger);
+		if (!inCave)
+		{
+			// The cave mouth's ready check and bank count.
+			Banked b = banked();
+			k.append('f').append(foodCount).append('a').append(ammo).append('w').append(weaponRange).append(weaponName)
+				.append('b').append(b == null ? "-" : b.getDoses() + "@" + b.getSavedAt() / 60_000L)
+				.append('l').append(client.getRealSkillLevel(Skill.PRAYER));
+		}
 		PrayerCall c = call;
 		if (c != null)
 		{

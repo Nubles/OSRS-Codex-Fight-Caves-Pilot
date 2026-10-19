@@ -57,4 +57,24 @@ public final class Format
 		long n = doses >= 0 ? (long) Math.floor(doses) : -(long) Math.ceil(-doses);
 		return (n >= 0 ? "+" : "") + n;
 	}
+
+	/** How long ago something was seen: "just now", "12 minutes ago", "3 hours ago", "2 days ago". */
+	public static String ago(long thenMs, long nowMs)
+	{
+		long minutes = Math.max(0, nowMs - thenMs) / 60_000L;
+		if (minutes < 1)
+		{
+			return "just now";
+		}
+		if (minutes < 60)
+		{
+			return minutes + (minutes == 1 ? " minute ago" : " minutes ago");
+		}
+		long hours = minutes / 60;
+		if (hours < 48)
+		{
+			return hours + (hours == 1 ? " hour ago" : " hours ago");
+		}
+		return (hours / 24) + " days ago";
+	}
 }

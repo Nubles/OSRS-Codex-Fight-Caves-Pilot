@@ -150,6 +150,10 @@ public final class View
 	int danger;
 	/** The run clock when Jad's wave begins at your usual pace, or null when not known. */
 	Integer jadAt;
+	/** The ready check at the cave mouth, or empty. */
+	List<com.codex.fightcaves.core.Ready.Line> ready = Collections.emptyList();
+	/** The prayer doses in your bank as last seen, or null when the bank has not been seen. */
+	com.codex.fightcaves.core.Banked banked;
 
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		Stand stand, double[] you, PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
@@ -251,6 +255,20 @@ public final class View
 	public View withForecast(Integer jadAt)
 	{
 		this.jadAt = jadAt;
+		return this;
+	}
+
+	/** Adds the ready check for the cave mouth. */
+	public View withReady(List<com.codex.fightcaves.core.Ready.Line> ready)
+	{
+		this.ready = ready == null ? Collections.emptyList() : ready;
+		return this;
+	}
+
+	/** Adds the doses in your bank, or null when the bank has not been seen. */
+	public View withBanked(com.codex.fightcaves.core.Banked banked)
+	{
+		this.banked = banked;
 		return this;
 	}
 

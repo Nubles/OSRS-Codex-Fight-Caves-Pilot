@@ -56,6 +56,25 @@ public final class Presence
 		return Change.NONE;
 	}
 
+	/**
+	 * You were seen in the cave between ticks, by something that only happens there: the wave
+	 * call, or a creature of the cave appearing. The game can send those on the very tick it
+	 * places you, before the tick itself is read, and they must not be lost to the order the
+	 * events arrive in.
+	 *
+	 * @return true when this is the moment you entered, false when you were already in
+	 */
+	public boolean enterNow()
+	{
+		outside = 0;
+		if (inside)
+		{
+			return false;
+		}
+		inside = true;
+		return true;
+	}
+
 	/** In the cave, counting a lone tick outside as still in. */
 	public boolean isInside()
 	{

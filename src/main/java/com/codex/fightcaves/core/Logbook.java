@@ -89,6 +89,10 @@ public final class Logbook
 	public int[] rotations = new int[Rotations.COUNT + 1];
 	/** "rotation:reach" to the road to Jad worked out for it, one letter per wave (see {@link Outlook}). */
 	public Map<String, String> outlooks = new HashMap<>();
+	/** Prayer doses in the bank as the pilot last counted them, or -1 before it has seen the bank. */
+	public long bankDoses = -1;
+	/** When that was, in epoch milliseconds. */
+	public long bankSeenAt;
 
 	/** A list with every gap read as 0, or an empty one. */
 	private static List<Integer> filled(List<Integer> list)
