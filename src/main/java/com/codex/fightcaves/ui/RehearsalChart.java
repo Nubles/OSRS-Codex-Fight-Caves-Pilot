@@ -12,6 +12,8 @@ import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RadialGradientPaint;
+import java.awt.geom.AffineTransform;
+import java.awt.image.BufferedImage;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
@@ -49,6 +51,15 @@ public class RehearsalChart extends JComponent
 	private String caption = "";
 	private double clock;
 	private double frozen = -1;
+	/**
+	 * The stone floor, pillars and spawn rings drawn once and kept: they only change with the
+	 * floor or the size, and redrawing three thousand tiles 25 times a second is wasted work.
+	 */
+	private BufferedImage backdrop;
+	private boolean[][] backdropFloor;
+	private int backdropW;
+	private int backdropH;
+	private double backdropScale;
 
 	public RehearsalChart(int height)
 	{
@@ -122,13 +133,12 @@ public class RehearsalChart extends JComponent
 		Theme.smooth(g);
 		int w = getWidth();
 		int h = getHeight();
+		if (w <= 0 || h <= 0)
+		{
+			g.dispose();
+			return;
+		}
 		RoundRectangle2D frame = new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, Theme.RADIUS, Theme.RADIUS);
-		g.setColor(Theme.INK_DEEP);
-		g.fill(frame);
-		g.setClip(frame);
-		g.setPaint(new RadialGradientPaint(w / 2f, h * 0.55f, Math.max(w, h) * 0.7f, new float[]{0, 1},
-			new Color[]{Theme.alpha(Theme.BLOOD_DEEP, 110), Theme.alpha(Theme.INK_DEEP, 0)}));
-		g.fillRect(0, 0, w, h);
 
 		int cols = MAX_X - MIN_X + 1;
 		int rows = MAX_Y - MIN_Y + 1;
@@ -137,19 +147,11 @@ public class RehearsalChart extends JComponent
 		double top = 22 + (h - 26 - cell * rows) / 2;
 		Grid map = new Grid(left, top, cell);
 
-		paintFloor(g, map);
-
+		paintBackdrop(g, w, h, frame, map);
+		java.awt.Shape clip = g.getClip();
+		g.clip(frame);
 		g.setFont(Theme.small());
 		FontMetrics small = g.getFontMetrics();
-		for (Spawn s : Spawn.values())
-		{
-			double cx = map.x(s.getTileX() + 1);
-			double cy = map.y(s.getTileY() + 1);
-			double r = cell * 2.6;
-			g.setColor(Theme.alpha(Theme.GOLD_DIM, 120));
-			g.setStroke(new BasicStroke(1f));
-			g.draw(new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2));
-		}
 
 		double t = now();
 		Rehearsal r = rehearsal;
@@ -177,7 +179,7 @@ public class RehearsalChart extends JComponent
 			g.fill(new Ellipse2D.Double(x - 2.2, y - 2.2, 4.4, 4.4));
 		}
 
-		g.setClip(null);
+		g.setClip(clip);
 		g.setFont(Theme.small());
 		Ui.shadowed(g, caption, 9, 4 + small.getAscent(), Theme.GOLD);
 		if (r != null)
@@ -189,6 +191,42 @@ public class RehearsalChart extends JComponent
 		g.setColor(Theme.STROKE_SOFT);
 		g.draw(frame);
 		g.dispose();
+	}
+
+	/** Draws the still part of the chart from the kept image, redrawing it only when the floor or size changes. */
+	private void paintBackdrop(Graphics2D g, int w, int h, RoundRectangle2D frame, Grid map)
+	{
+		AffineTransform tx = g.getTransform();
+		double scale = Math.max(1, tx.getScaleX());
+		if (backdrop == null || backdropFloor != floor || backdropW != w || backdropH != h || backdropScale != scale)
+		{
+			backdrop = new BufferedImage((int) Math.ceil(w * scale), (int) Math.ceil(h * scale), BufferedImage.TYPE_INT_ARGB);
+			Graphics2D b = backdrop.createGraphics();
+			Theme.smooth(b);
+			b.scale(scale, scale);
+			b.setColor(Theme.INK_DEEP);
+			b.fill(frame);
+			b.setClip(frame);
+			b.setPaint(new RadialGradientPaint(w / 2f, h * 0.55f, Math.max(w, h) * 0.7f, new float[]{0, 1},
+				new Color[]{Theme.alpha(Theme.BLOOD_DEEP, 110), Theme.alpha(Theme.INK_DEEP, 0)}));
+			b.fillRect(0, 0, w, h);
+			paintFloor(b, map);
+			b.setColor(Theme.alpha(Theme.GOLD_DIM, 120));
+			b.setStroke(new BasicStroke(1f));
+			for (Spawn s : Spawn.values())
+			{
+				double cx = map.x(s.getTileX() + 1);
+				double cy = map.y(s.getTileY() + 1);
+				double r = map.cell * 2.6;
+				b.draw(new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2));
+			}
+			b.dispose();
+			backdropFloor = floor;
+			backdropW = w;
+			backdropH = h;
+			backdropScale = scale;
+		}
+		g.drawImage(backdrop, 0, 0, w, h, null);
 	}
 
 	/** Open floor as warm stone; pillars and walls as the dark between, edged in gold. */

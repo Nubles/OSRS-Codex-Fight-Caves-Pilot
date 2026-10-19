@@ -129,9 +129,18 @@ public final class Logbook
 		run.dosesUsed = active.dosesUsed;
 		run.splits = new ArrayList<>(active.splits);
 		runs.add(run);
-		while (runs.size() > KEEP_RUNS)
+		// Drop the oldest runs, but never your best cape: the splits race it.
+		Run pb = Splits.personalBest(runs);
+		for (int i = 0; runs.size() > KEEP_RUNS && i < runs.size(); )
 		{
-			runs.remove(0);
+			if (runs.get(i) == pb)
+			{
+				i++;
+			}
+			else
+			{
+				runs.remove(i);
+			}
 		}
 		attempts++;
 		furthest = Math.max(furthest, active.wave);

@@ -76,4 +76,20 @@ public class ChaseTest
 		assertEquals(Monster.KET_ZEK, spot.getOutcomes().get(0).getFoe().getMonster());
 		assertEquals(2, spot.getOutcomes().size());
 	}
+
+	@Test
+	public void onlyTheSidesFacingYouCanSee()
+	{
+		// A 3 by 3 creature north-west of you: only its top-middle tile, on the far side of
+		// its body, has a clear line past the rocks, so RuneLite's rule says it cannot see you.
+		int[][] flags = new int[20][20];
+		int[][] rocks = {{1, 7}, {2, 1}, {3, 1}, {3, 8}, {4, 15}, {6, 13}, {7, 5}, {10, 19}, {13, 4}, {14, 7}, {17, 3}, {19, 9}};
+		for (int[] r : rocks)
+		{
+			flags[r[0]][r[1]] = Grid.SOLID;
+		}
+		Grid g = new Grid(flags);
+		assertTrue(g.sees(11, 10, 16, 6));
+		assertFalse(g.areaSees(10, 8, 3, 16, 6));
+	}
 }

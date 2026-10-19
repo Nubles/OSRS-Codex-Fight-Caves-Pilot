@@ -188,7 +188,7 @@ public final class Compare
 		}
 		if (hs.size() > 1 && ts.size() <= 1)
 		{
-			return "Here " + join(hs) + " hit you at once and one prayer cannot block both. On the gilt tile one prayer covers it.";
+			return "Here " + join(hs) + " hit you at once and one prayer cannot block " + (hs.size() > 2 ? "them all" : "both") + ". On the gilt tile one prayer covers it.";
 		}
 		int hf = firstHit(here);
 		int tf = firstHit(there);

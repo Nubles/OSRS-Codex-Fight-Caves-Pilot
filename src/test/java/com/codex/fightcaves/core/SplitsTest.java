@@ -90,4 +90,26 @@ public class SplitsTest
 		assertEquals(2, recent.get(1)[2]);
 		assertEquals(Integer.MIN_VALUE, Splits.recent(Collections.emptyList(), Arrays.asList(45), 3).get(0)[2]);
 	}
+
+	@Test
+	public void theBestCapeOutlivesTheRunsKept()
+	{
+		Logbook b = new Logbook();
+		b.active = new Logbook.Active();
+		for (int i = 0; i < Waves.LAST; i++)
+		{
+			b.active.splits.add(50);
+		}
+		b.active.wave = Waves.LAST;
+		b.active.ticks = Waves.LAST * 50;
+		Logbook.Run cape = b.finish(Logbook.Result.CAPE);
+		for (int i = 0; i < Logbook.KEEP_RUNS + 5; i++)
+		{
+			b.active = new Logbook.Active();
+			b.active.wave = 3;
+			b.finish(Logbook.Result.DIED);
+		}
+		assertEquals(Logbook.KEEP_RUNS, b.runs.size());
+		assertEquals(cape, Splits.personalBest(b.runs));
+	}
 }

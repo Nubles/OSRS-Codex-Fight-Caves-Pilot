@@ -162,6 +162,11 @@ public class CaveOverlay extends Overlay
 		return null;
 	}
 
+	private static final BasicStroke TRAIL_SHADOW = new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+	private static final BasicStroke TRAIL = new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1, new float[]{2, 6}, 0);
+	private static final BasicStroke RING_SHADOW = new BasicStroke(2f);
+	private static final BasicStroke RING = new BasicStroke(1.4f);
+
 	/**
 	 * Each creature's walk from its spawn to where it stops, as a dotted line on the floor in its
 	 * prayer's colour, ending in a ring: teal where it sticks, ember where it starts hitting you.
@@ -209,17 +214,17 @@ public class CaveOverlay extends Overlay
 				continue;
 			}
 			Color color = Theme.of(t.getMonster());
-			g.setStroke(new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			g.setStroke(TRAIL_SHADOW);
 			g.setColor(Theme.alpha(Color.BLACK, 70));
 			g.draw(line);
-			g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1, new float[]{2, 6}, 0));
+			g.setStroke(TRAIL);
 			g.setColor(Theme.alpha(color, 220));
 			g.draw(line);
 			Color end = t.attacks() ? Theme.EMBER : Theme.TEAL;
-			g.setStroke(new BasicStroke(2f));
+			g.setStroke(RING_SHADOW);
 			g.setColor(Theme.alpha(Color.BLACK, 120));
 			g.drawOval(last.getX() - 6, last.getY() - 6, 12, 12);
-			g.setStroke(new BasicStroke(1.4f));
+			g.setStroke(RING);
 			g.setColor(end);
 			g.drawOval(last.getX() - 5, last.getY() - 5, 10, 10);
 			String label = t.attacks() ? (t.getTicks() == 0 ? "at once" : t.getTicks() + (t.getTicks() == 1 ? " tick" : " ticks")) : t.isInReach() ? "safespot" : "stuck";
