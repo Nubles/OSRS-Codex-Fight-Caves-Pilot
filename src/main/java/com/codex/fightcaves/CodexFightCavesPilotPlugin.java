@@ -1,5 +1,6 @@
 package com.codex.fightcaves;
 
+import com.codex.fightcaves.notes.FieldNotes;
 import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.Chase;
@@ -148,6 +149,9 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Inject
 	private CodexFightCavesPilotConfig config;
 
+	/** The optional local record of what the plugin read and decided. */
+	private FieldNotes notes;
+
 	@Inject
 	private CaveOverlay caveOverlay;
 
@@ -260,6 +264,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		notes = new FieldNotes(this::getPluginDirectory, gson);
+		if (config.fieldNotes())
+		{
+			notes.open();
+		}
 		panel = new PilotPanel();
 		// The panel is only rebuilt while it is open, so bring it up to date as it opens.
 		panel.onOpen(() -> clientThread.invokeLater(() -> publish(true)));
@@ -287,6 +296,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		if (notes != null)
+		{
+			notes.shutdown();
+			notes = null;
+		}
 		overlayManager.remove(caveOverlay);
 		overlayManager.remove(plaque);
 		clientToolbar.removeNavigation(navButton);
@@ -369,6 +383,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		if (CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()) && "fieldNotes".equals(event.getKey()) && notes != null)
+		{
+			if (config.fieldNotes())
+			{
+				notes.open();
+			}
+			else
+			{
+				notes.close();
+			}
+			return;
+		}
 		// The logbook itself is saved under the same group; its own saves need no redraw.
 		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup())
 			&& !LOGBOOK_KEY.equals(event.getKey()) && !BACKUP_KEY.equals(event.getKey());
@@ -444,6 +470,19 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
+		if (notes != null && notes.isOpen())
+		{
+			net.runelite.api.ChatMessageType chatType = event.getType();
+			// Only the game's own lines: other players' chat is never written down.
+			if (chatType == net.runelite.api.ChatMessageType.GAMEMESSAGE || chatType == net.runelite.api.ChatMessageType.SPAM
+				|| chatType == net.runelite.api.ChatMessageType.MESBOX)
+			{
+				com.google.gson.JsonObject chatNote = new com.google.gson.JsonObject();
+				chatNote.addProperty("type", chatType.name());
+				chatNote.addProperty("text", event.getMessage());
+				notes.note("chat", chatNote);
+			}
+		}
 		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 		{
 			return;
@@ -1607,6 +1646,17 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		String key = viewKey();
+		if (notes.isOpen() && inCave)
+		{
+			// The rotation read, the candidates left and the wave, so a wrong read can be traced.
+			com.google.gson.JsonObject n = new com.google.gson.JsonObject();
+			n.addProperty("rotation", String.valueOf(tracker.rotation()));
+			n.addProperty("candidates", String.valueOf(tracker.candidates()));
+			n.addProperty("wave", book == null || book.active == null ? -1 : book.active.wave);
+			n.addProperty("doses", book == null || book.active == null ? -1 : book.active.dosesUsed);
+			n.addProperty("danger", String.valueOf(danger));
+			notes.noteChanged("cave", n);
+		}
 		boolean changed = force || !key.equals(lastViewKey);
 		if (!changed)
 		{
