@@ -1,0 +1,26 @@
+# The TzHaar Fight Cave for replays: map region 9551 (CodexFightCavesPilotPlugin.FIGHT_CAVE_REGION),
+# south-west corner 2368,5056. The real cave is an instance; here it stands at its template
+# tiles, which is where the plugin maps an instance back to. The floor is open; the cave's own
+# rocks are not modelled.
+#
+# Creatures and levels (oldschool.runescape.wiki/w/TzHaar_Fight_Cave): Tz-Kih 22, Tz-Kek 45,
+# Tok-Xil 90, Yt-MejKot 180, Ket-Zek 360, TzTok-Jad 702; 63 waves; wave 1 is one Tz-Kih, wave 2
+# two, wave 3 one Tz-Kek, wave 4 a Tz-Kek and a Tz-Kih. Waves are announced "Wave: N" in the chat
+# (the pattern RuneLite's own TimersAndBuffsPlugin reads).
+
+scene 2348 5036
+block 2348 5036 104 104
+open 2368 5056 64 64
+skill ATTACK 70
+skill STRENGTH 70
+skill DEFENCE 70
+skill HITPOINTS 70
+skill RANGED 75
+skill PRAYER 43
+at 2400 5080
+login
+
+watch figure plaque.shown.figure
+watch note plaque.shown.note
+watch call plaque.shown.call
+watch danger plaque.shown.danger

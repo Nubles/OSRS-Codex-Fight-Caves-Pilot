@@ -1,0 +1,32 @@
+# The plugin reads the cave's rotation from where the first waves spawn. In rotation 4 of its
+# table (core/Rotations, players' numbering) wave 1 spawns north-west, wave 2 centre and south,
+# wave 3 south. North-west alone fits rotations 4, 5 and 6; with wave 2 only 4 is left.
+# Spawn tiles are the plugin's own (core/Spawn, counted from the region's south-west corner).
+include /replays/scenes/cave.scene
+tick 2
+expect figure = null
+
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2381 5105 1 level 22 as kih1
+tick 3
+expect figure = "Wave 1"
+expect note = "Reading rotation"
+remove kih1
+tick 5
+
+chat GAMEMESSAGE "<col=ef1020>Wave: 2</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2400 5088 1 level 22 as kih2
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2405 5073 1 level 22 as kih3
+tick 3
+expect figure = "Wave 2"
+expect note = "Rotation 4"
+remove kih2
+remove kih3
+tick 5
+
+# Wave 3, one Tz-Kek, south, as rotation 4 says: still rotation 4.
+chat GAMEMESSAGE "<col=ef1020>Wave: 3</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_2A Tz-Kek 2405 5073 2 level 45 as kek
+tick 3
+expect figure = "Wave 3"
+expect note = "Rotation 4"
