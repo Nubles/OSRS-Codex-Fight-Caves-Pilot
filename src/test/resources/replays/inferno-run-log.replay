@@ -1,0 +1,48 @@
+# An Inferno attempt logged from the game's own lines: "Wave: N" (RuneLite TimersAndBuffsPlugin,
+# TZHAAR_WAVE_MESSAGE, which reads it in the Inferno too), the pause line "The Inferno has been
+# paused. You may now log out." (TimersAndBuffsPlugin.TZHAAR_PAUSED_MESSAGE), and a death. Waves
+# are timed between calls, counting only ticks spent inside. The Fight Cave never sees these calls.
+include /replays/scenes/inferno.scene
+always caveRun = null
+tick 2
+expect open = null
+
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+tick 10
+expect open = "INFERNO"
+expect reached = "1"
+chat GAMEMESSAGE "<col=ef1020>Wave: 2</col>"
+tick 1
+expect splits = "[10]"
+expect cleared = "1"
+tick 7
+
+# Paused between waves and away a while (the schematic stand-in for logging out: Mor Ul Rek,
+# region 9808): the run stays open and its clock stops.
+chat GAMEMESSAGE "<col=ef1020>The Inferno has been paused. You may now log out."
+tick 1
+expect paused = "true"
+scene 2420 5110
+at 2460 5150
+tick 20
+expect open = "INFERNO"
+scene 2220 5292
+at 2270 5340
+tick 1
+chat GAMEMESSAGE "<col=ef1020>Wave: 3</col>"
+tick 1
+# Wave 2: 8 ticks before the pause and 2 after, not the time away.
+expect splits = "[10, 10]"
+expect paused = "false"
+tick 5
+
+# Hitpoints to nothing: a death on wave 3, filed as such.
+boost HITPOINTS 0
+tick 1
+expect open = null
+expect infernoRuns = "1"
+watch result arenas.log.inferno.runs.0.result
+watch diedOn arenas.log.inferno.runs.0.reached
+tick 1
+expect result = "DIED"
+expect diedOn = "3"

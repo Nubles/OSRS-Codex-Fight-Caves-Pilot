@@ -1,0 +1,18 @@
+# The Inferno for replays: map region 9043 (RuneLite's TimersAndBuffsPlugin.INFERNO_REGION_ID and
+# DiscordGameEventType.MG_INFERNO), south-west corner 2240,5312. Schematic: an open floor at the
+# region's template tiles, where the plugin maps the instance back to; no pillars or walls.
+# "There are 69 waves in total." (oldschool.runescape.wiki/w/The_Inferno)
+
+scene 2220 5292
+skill HITPOINTS 99
+skill PRAYER 99
+at 2270 5340
+login
+
+watch open arenas.openArena
+watch infernoRuns arenas.log.inferno.runs.size
+watch reached arenas.log.inferno.active.reached
+watch cleared arenas.log.inferno.active.cleared
+watch splits arenas.log.inferno.active.splits
+watch paused arenas.log.inferno.paused
+watch caveRun book.active

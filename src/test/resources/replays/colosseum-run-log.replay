@@ -1,0 +1,45 @@
+# Two Colosseum attempts. The wave lines "Wave N completed! Wave duration: T" are unconfirmed: no
+# wiki page or RuneLite source quotes them; they are the ones the Fortis Colosseum plugin
+# (LlemonDuck, SplitsTracker) and Blert read. The chest line "Search the chest nearby to retrieve
+# your earned rewards!" is RuneLite's own (ScreenshotPlugin). The game's own wave time is the split.
+include /replays/scenes/colosseum.scene
+always caveRun = null
+tick 2
+chat GAMEMESSAGE "Wave 1 completed! Wave duration: <col=ff0000>0:46.20</col>"
+tick 1
+expect open = "COLOSSEUM"
+# 46.2 seconds is 77 ticks.
+expect splits = "[77]"
+expect between = "true"
+chat GAMEMESSAGE "Wave 2 completed! Wave duration: <col=ff0000>1:00.00</col>"
+tick 1
+expect splits = "[77, 100]"
+expect cleared = "2"
+
+# The run is ended between waves and the chest taken.
+chat GAMEMESSAGE "Search the chest nearby to retrieve your earned rewards!"
+tick 1
+expect open = null
+expect coloRuns = "1"
+watch first arenas.log.colosseum.runs.0.result
+tick 1
+expect first = "CLAIMED"
+
+# The second attempt dies in wave 2: hitpoints to nothing.
+chat GAMEMESSAGE "Wave 1 completed! Wave duration: 0:40.20"
+tick 3
+boost HITPOINTS 0
+tick 1
+watch second arenas.log.colosseum.runs.1.result
+watch secondReached arenas.log.colosseum.runs.1.reached
+tick 1
+expect second = "DIED"
+expect secondReached = "2"
+
+# Back in the lobby, nothing is left open.
+boost HITPOINTS 99
+scene 1772 9452
+at 1807 9507
+tick 6
+expect open = null
+expect coloRuns = "2"

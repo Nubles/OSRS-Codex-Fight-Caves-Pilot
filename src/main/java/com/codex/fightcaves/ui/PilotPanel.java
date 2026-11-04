@@ -36,17 +36,21 @@ import net.runelite.client.ui.PluginPanel;
 public class PilotPanel extends PluginPanel
 {
 	static final int WIDTH = 200;
-	private static final String[] TABS = {"pilot", "waves", "records"};
+	private static final String[] TABS = {"pilot", "waves", "records", "arenas"};
 	private static final int AHEAD = 5;
 	private static final int RECENT = 8;
 
 	private final Crest crest = new Crest();
-	private final Segmented tabs = new Segmented(true, "Pilot", "Waves", "Records");
+	private final Segmented tabs = new Segmented(true, "Pilot", "Waves", "Records", "Arenas");
 	private final CardLayout cards = new CardLayout();
 	private final JPanel content = new JPanel(cards);
 	private final JScrollPane pilot = scroller();
 	private final JScrollPane waves = scroller();
 	private final JScrollPane records = scroller();
+	private final JScrollPane arenas = scroller();
+	/** The arena the Arenas page shows, and whether you picked it. */
+	private com.codex.fightcaves.arena.Arena arenaTab = com.codex.fightcaves.arena.Arena.INFERNO;
+	private boolean arenaTouched;
 
 	private View view = View.loggedOut();
 	/** The rotation and wave being studied on the Waves page. */
@@ -83,6 +87,7 @@ public class PilotPanel extends PluginPanel
 		content.add(pilot, TABS[0]);
 		content.add(waves, TABS[1]);
 		content.add(records, TABS[2]);
+		content.add(arenas, TABS[3]);
 		add(content, BorderLayout.CENTER);
 		tabs.onChange(this::showTab);
 		rebuild();
@@ -112,6 +117,15 @@ public class PilotPanel extends PluginPanel
 		return open || isShowing();
 	}
 
+	/** Set by the plugin: true while an Inferno or Colosseum wave is on. */
+	private volatile boolean arenaWave;
+
+	/** Tells the panel whether an Inferno or Colosseum wave is on. Safe to call from any thread. */
+	public void arenaWave(boolean on)
+	{
+		arenaWave = on;
+	}
+
 	/** Tells the panel whether Jad's wave is on. Safe to call from any thread. */
 	public void jadWave(boolean on)
 	{
@@ -127,6 +141,17 @@ public class PilotPanel extends PluginPanel
 			// Opened on Jad's wave: what it drew when last open must not show, not even until the
 			// plugin's fresh view arrives, so every page steps back before the panel is painted.
 			stepBack();
+		}
+		else if (arenaWave)
+		{
+			// Opened during an arena wave: nothing it drew before may show while the fresh view comes.
+			for (JScrollPane page : new JScrollPane[]{pilot, waves, records, arenas})
+			{
+				StackPanel stack = new StackPanel(8, 8);
+				stack.setName(ARENA_QUIET);
+				stack.add(note("Wave on", "Nothing shows during a wave. The run is filed when it ends."));
+				replace(page, stack);
+			}
 		}
 		Runnable r = onOpen;
 		if (r != null)
@@ -146,6 +171,15 @@ public class PilotPanel extends PluginPanel
 	{
 		boolean rotationChanged = view.rotation != this.view.rotation;
 		this.view = view;
+		if (view.arenaHere != null)
+		{
+			// Standing in an arena, the page follows it.
+			arenaTab = view.arenaHere;
+		}
+		else if (!arenaTouched)
+		{
+			arenaTab = ArenaPage.preferred(view);
+		}
 		if (!studyTouched || rotationChanged && view.rotation > 0)
 		{
 			studyRotation = view.rotation > 0 ? view.rotation : studyRotation;
@@ -161,6 +195,37 @@ public class PilotPanel extends PluginPanel
 	{
 		tabs.setSelected(index, false);
 		cards.show(content, TABS[index]);
+		updateCrest();
+	}
+
+	/** The crest on the Arenas page: the arena shown, its completions and how far you have got. */
+	private void arenaCrest()
+	{
+		com.codex.fightcaves.arena.Arena a = view.arenaHere != null ? view.arenaHere : arenaTab;
+		com.codex.fightcaves.arena.ArenaLog.Book b = view.arenas.book(a);
+		int done = b.completions();
+		String status;
+		java.awt.Color color = Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.3);
+		if (view.arenaQuiet())
+		{
+			// The wave and nothing else.
+			int wave = b.active == null ? 0 : Math.max(1, b.active.reached);
+			crest.update(a.getTitle().toUpperCase(java.util.Locale.ENGLISH), wave > 0 ? String.valueOf(wave) : "-", "/ " + a.getWaves(), "Wave on",
+				Theme.TEXT_MUTED, Theme.GOLD, wave / (double) a.getWaves());
+			return;
+		}
+		else if (b.active != null && view.arenaHere == a)
+		{
+			status = view.arenaBetween > 0 ? "Between waves" : b.paused ? "Paused after wave " + b.active.cleared : "Run open";
+		}
+		else
+		{
+			status = b.runs.isEmpty() ? "No attempts yet" : "Furthest: wave " + b.furthest();
+		}
+		String figure = done > 0 ? Format.count(done) : String.valueOf(a.getWaves());
+		String unit = done > 0 ? (a == com.codex.fightcaves.arena.Arena.INFERNO ? (done == 1 ? "cape" : "capes") : (done == 1 ? "win" : "wins")) : "waves";
+		crest.update(a.getTitle().toUpperCase(java.util.Locale.ENGLISH), figure, unit, status, color, Theme.GOLD,
+			b.runs.isEmpty() ? 0 : b.furthest() / (double) a.getWaves());
 	}
 
 	/** Chooses what the Waves page shows, for previews and tests. */
@@ -174,6 +239,11 @@ public class PilotPanel extends PluginPanel
 
 	private void updateCrest()
 	{
+		if ((tabs.getSelected() == 3 || view.arenaQuiet()) && view.arenas != null && !view.quiet() && view.state != View.State.LOGGED_OUT)
+		{
+			arenaCrest();
+			return;
+		}
 		switch (view.state)
 		{
 			case LOGGED_OUT:
@@ -225,9 +295,68 @@ public class PilotPanel extends PluginPanel
 
 	private void rebuild()
 	{
+		if (view.arenaQuiet())
+		{
+			// An Inferno or Colosseum wave is on: every page holds the plain clock and nothing else.
+			for (JScrollPane page : new JScrollPane[]{pilot, waves, records, arenas})
+			{
+				StackPanel stack = ArenaPage.clockCard(view);
+				stack.setName(ARENA_QUIET);
+				replace(page, stack);
+			}
+			return;
+		}
 		rebuildPilot();
 		rebuildWaves();
 		rebuildRecords();
+		rebuildArenas();
+	}
+
+	static final String ARENA_QUIET = "arenaQuiet";
+
+	private void rebuildArenas()
+	{
+		if (view.quiet())
+		{
+			quiet(arenas);
+			return;
+		}
+		java.awt.Point keep = arenas.getViewport().getViewPosition();
+		replace(arenas, ArenaPage.build(view, arenaTab, index ->
+		{
+			arenaTab = com.codex.fightcaves.arena.Arena.values()[index];
+			arenaTouched = true;
+			rebuildArenas();
+			updateCrest();
+		}));
+		arenas.getViewport().setViewPosition(keep);
+	}
+
+	/** True when a page holds only the arena clock, for tests. */
+	boolean arenaQuietShown(int tab)
+	{
+		java.awt.Component c = page(tab).getViewport().getView();
+		return c != null && ARENA_QUIET.equals(c.getName());
+	}
+
+	/** The Arenas page, for tests. */
+	JScrollPane arenasPage()
+	{
+		return arenas;
+	}
+
+	/** Chooses the arena the Arenas page shows, for previews and tests. */
+	public void showArena(com.codex.fightcaves.arena.Arena arena)
+	{
+		arenaTab = arena;
+		arenaTouched = true;
+		updateCrest();
+		rebuild();
+	}
+
+	private JScrollPane page(int tab)
+	{
+		return tab == 0 ? pilot : tab == 1 ? waves : tab == 2 ? records : arenas;
 	}
 
 	private static Card note(String title, String text)
@@ -248,6 +377,7 @@ public class PilotPanel extends PluginPanel
 		quiet(pilot);
 		quiet(waves);
 		quiet(records);
+		quiet(arenas);
 	}
 
 	/** The crest's word beside 63 on the last wave. */
@@ -269,8 +399,7 @@ public class PilotPanel extends PluginPanel
 
 	boolean steppedBack(int tab)
 	{
-		JScrollPane page = tab == 0 ? pilot : tab == 1 ? waves : records;
-		java.awt.Component c = page.getViewport().getView();
+		java.awt.Component c = page(tab).getViewport().getView();
 		return c != null && QUIET.equals(c.getName());
 	}
 

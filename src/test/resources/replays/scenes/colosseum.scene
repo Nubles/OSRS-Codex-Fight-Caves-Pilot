@@ -1,0 +1,18 @@
+# The Fortis Colosseum for replays: map region 7216 (RuneLite's
+# DiscordGameEventType.MG_FORTIS_COLOSSEUM), south-west corner 1792,3072. Schematic: an open floor
+# at the region's template tiles; the lobby (7316, MG_FORTIS_COLOSSEUM_LOBBY) is loaded by the
+# script when it leaves. "players can take on up to twelve waves of opponents"
+# (oldschool.runescape.wiki/w/Fortis_Colosseum)
+
+scene 1772 3052
+skill HITPOINTS 99
+at 1820 3100
+login
+
+watch open arenas.openArena
+watch coloRuns arenas.log.colosseum.runs.size
+watch reached arenas.log.colosseum.active.reached
+watch cleared arenas.log.colosseum.active.cleared
+watch splits arenas.log.colosseum.active.splits
+watch between arenas.between
+watch caveRun book.active
