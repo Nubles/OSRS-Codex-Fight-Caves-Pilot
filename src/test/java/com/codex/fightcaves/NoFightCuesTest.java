@@ -29,7 +29,9 @@ public class NoFightCuesTest
 		}
 		assertEquals(new TreeSet<>(Arrays.asList("plaque", "jadDoses", "chat",
 			// The wave ghost.
-			"ghost")), keys);
+			"ghost",
+			// The opt-in local record.
+			"fieldNotes")), keys);
 		assertEquals("codexfightcavespilot", CodexFightCavesPilotConfig.GROUP);
 	}
 
