@@ -1,0 +1,25 @@
+# Mor Ul Rek by the Fight Cave's mouth, for the rotation clock. The cave's entrance is in Mor Ul
+# Rek (oldschool.runescape.wiki/w/TzHaar_Fight_Cave); its map regions are 9808, 9807, 10064 and
+# 10063, as RuneLite's Discord plugin lists them (DiscordGameEventType.CITY_MOR_UL_REK). Region
+# 9808 runs from 2432,5120 to 2495,5183. Schematic: an open floor, no city.
+#
+# The game's clock (net.runelite.api.gameval): VarPlayerID.DATE_MINUTES, minutes since midnight,
+# and VarbitID.DATE_SECONDS_PAST_MINUTE.
+
+scene 2420 5110
+skill ATTACK 70
+skill STRENGTH 70
+skill DEFENCE 70
+skill HITPOINTS 70
+skill RANGED 75
+skill PRAYER 43
+at 2460 5150
+
+watch clock clockPlaque.shown.rotation
+watch next clockPlaque.shown.next
+watch line clockPlaque.shown.line
+watch figure plaque.shown.figure
+watch note plaque.shown.note
+watch clockChecks book.clock.size
+watch clockSaid book.clock.0.said
+watch clockHit book.clock.0.hit

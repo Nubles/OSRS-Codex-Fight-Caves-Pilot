@@ -25,6 +25,22 @@ These are a clock and a tally. The pilot gives no in-fight cues of any kind: no 
   <img src="docs/screenshots/plaque.png" width="321" alt="The plaque">
 </p>
 
+## The rotation clock
+
+The cave gives you a rotation by the time you walk in: it changes every minute, and rotation 4 lasts two (OSRS wiki, *TzHaar Fight Cave/Rotations*). The pilot reads the game's own clock, so you know your rotation before you go in.
+
+- **At the cave mouth.** Stand anywhere in Mor Ul Rek and a small plaque says which rotation you would get if you walked in now, the next one and when it comes on, with a hairline burning down the minute. In its last seconds it says the rotation is changing, as either side may be the one you get.
+- **Your rotations, your times.** The panel shows the 16-minute cycle as a dial, your fastest and steadiest rotations (from your own runs) and how long until each comes up, and the next five rotations with your best time on each.
+- **It checks itself.** Every run, what the clock said as you went in is checked against what the spawns then show, and kept per account. After three right in a row, the pilot names your rotation the moment you walk in, so the Waves page and the plaque have it from wave 1. Two misses in five and it says so plainly and goes back to reading the spawns.
+- **The spawns always win.** A clock call never overrules what the spawns show: the first wave that disagrees drops it, and the miss is counted. Walking in on the turn of a minute keeps both rotations either side, and wave 1 always tells those two apart.
+
+<p align="center">
+  <img src="docs/screenshots/clock.png" width="225" alt="The rotation clock on the panel">
+  <img src="docs/screenshots/clock-plaque.png" width="321" alt="The rotation clock plaque at the cave mouth">
+</p>
+
+The order of the rotations through the cycle is the one the Fight Caves Spawn Predictor plugin by Damen uses (github.com/damencs/spawn-predictor); its rotation numbers were checked against this plugin's own rotation table, every wave of every rotation.
+
 ## Before you go in
 
 - **Waves.** Every wave of every rotation to study: pick a rotation, click any wave to see where it spawns on the cave chart with the wave after it outlined.
@@ -53,10 +69,11 @@ These are a clock and a tally. The pilot gives no in-fight cues of any kind: no 
 
 ## Settings that matter
 
-Settings come in two groups. Every option is on by default.
+Settings come in a few groups. Every option except field notes is on by default.
 
 - **During a run:** *Pilot plaque* and *Wave ghost on the plaque*. Neither shows on the Jad wave.
 - **Planning and chat:** *Doses kept for Jad* (how many prayer doses pacing holds back for him, 4 by default) and *Notes in chat* (rotation known, prayer behind pace, why a run ended).
+- **Rotation clock:** *Rotation clock* turns the whole clock off: the plaque at the cave mouth, the panel's dial and naming the rotation before the spawns. The plaque also follows *Pilot plaque*.
 
 ## Works with other Codex plugins
 

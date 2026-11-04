@@ -14,11 +14,92 @@ import java.util.Map;
  * Only which spawn points were used is compared, not which creature stood on each, and a
  * rotation is never ruled out for good: the one with the fewest disagreements wins, so one
  * misread spawn cannot leave the pilot with no answer.
+ *
+ * <p>A prior from the rotation clock can name the rotation before the spawns do: {@link #likely}
+ * gives it while it agrees with every candidate the spawns leave. The spawns are never overruled:
+ * {@link #rotation} reads them alone, and once they rule the prior out it is dropped.
  */
 public final class RotationTracker
 {
 	private final int[] misses = new int[Rotations.COUNT];
 	private int seen;
+	/** Rotations the clock allows, or empty for no prior. Kept through {@link #reset}. */
+	private final java.util.Set<Integer> prior = new java.util.TreeSet<>();
+
+	/** The clock's rotations for this run, to be confirmed or ruled out by the spawns. */
+	public void prior(java.util.Collection<Integer> rotations)
+	{
+		prior.clear();
+		if (rotations != null)
+		{
+			for (Integer r : rotations)
+			{
+				if (r != null && r >= 1 && r <= Rotations.COUNT)
+				{
+					prior.add(r);
+				}
+			}
+		}
+	}
+
+	public void clearPrior()
+	{
+		prior.clear();
+	}
+
+	public boolean hasPrior()
+	{
+		return !prior.isEmpty();
+	}
+
+	/**
+	 * The rotation by the spawns once they settle it; before that, the clock's when it leaves just
+	 * one of the spawns' candidates; else 0. Spawns that disagree with the clock always win.
+	 */
+	public int likely()
+	{
+		int r = rotation();
+		if (r > 0 || prior.isEmpty())
+		{
+			return r;
+		}
+		int only = 0;
+		for (int c : candidates())
+		{
+			if (prior.contains(c))
+			{
+				if (only != 0)
+				{
+					return 0;
+				}
+				only = c;
+			}
+		}
+		return only;
+	}
+
+	/** True when {@link #likely} names a rotation the spawns have not settled yet. */
+	public boolean fromPrior()
+	{
+		return rotation() == 0 && likely() > 0;
+	}
+
+	/** True when the spawns have ruled out every rotation the clock allowed. */
+	public boolean priorContradicted()
+	{
+		if (prior.isEmpty() || seen == 0)
+		{
+			return false;
+		}
+		for (int c : candidates())
+		{
+			if (prior.contains(c))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 
 	public void reset()
 	{

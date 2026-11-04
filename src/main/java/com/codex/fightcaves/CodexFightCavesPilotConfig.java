@@ -66,6 +66,21 @@ public interface CodexFightCavesPilotConfig extends Config
 		return true;
 	}
 
+	@ConfigSection(name = "Rotation clock", description = "Which rotation you would get if you went in now, by the game's clock", position = 2)
+	String CLOCK = "clock";
+
+	@ConfigItem(
+		keyName = "rotationClock",
+		name = "Rotation clock",
+		description = "Near the cave, show which rotation you would get if you went in now and when your best rotations come up; once it has been right on your account, name the rotation from wave 1. The spawns always have the last word",
+		section = CLOCK,
+		position = 0
+	)
+	default boolean rotationClock()
+	{
+		return true;
+	}
+
 	@ConfigSection(
 		name = "Field notes",
 		description = "A local record for checking the plugin's guesses",

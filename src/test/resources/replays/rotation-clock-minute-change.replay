@@ -1,0 +1,25 @@
+# Walking in as the minute turns. The last reading by the cave mouth is 00:02:59 (rotation 9) and
+# the first inside 00:03:00 (rotation 11; see rotation-clock.replay for the sources). The
+# server decided somewhere between, so the pilot keeps both and names neither yet. Rotations
+# next to each other in time never share a wave 1 spawn (RotationClockTest), so wave 1 settles
+# it: here south-east, rotation 11's (2419,5083: Spawn.SE is 51,27 from the corner 2368,5056).
+include /replays/scenes/mor-ul-rek.scene
+saved logbook {clock:[{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1}]}   # Gson reads it leniently: the script cannot hold quotes
+varp DATE_MINUTES 2
+varbit DATE_SECONDS_PAST_MINUTE 58
+login
+tick
+varbit DATE_SECONDS_PAST_MINUTE 59
+tick
+expect next = "11 in 0:01"
+include /replays/scenes/into-the-cave.scene
+varp DATE_MINUTES 3
+varbit DATE_SECONDS_PAST_MINUTE 0
+tick
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+tick
+expect note = "Reading rotation"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2419 5083 1 level 22 as kih1
+tick 3
+# One of the clock's two, and the only one the spawns allow: named from wave 1.
+expect note = "Rotation 11 (clock)"

@@ -1,0 +1,18 @@
+# Honest about a clock that keeps missing. This account's clock missed twice in its last five
+# runs (core/ClockTrust), so the plaque at the cave mouth says so and the spawns alone name the
+# rotation, even though the clock still reads. At 00:02:30 rotation 9 is on and rotation 13
+# comes on at 00:04:00 (see rotation-clock.replay for the sources).
+include /replays/scenes/mor-ul-rek.scene
+saved logbook {clock:[{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1},{said:9,read:13,second:30,at:1},{said:9,read:13,second:30,at:1}]}   # Gson reads it leniently: the script cannot hold quotes
+varp DATE_MINUTES 2
+varbit DATE_SECONDS_PAST_MINUTE 30
+login
+tick
+expect clock = 9
+expect line = "Missed 2 of your last 5: spawns decide"
+include /replays/scenes/into-the-cave.scene
+varbit DATE_SECONDS_PAST_MINUTE 31
+tick
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+tick
+expect note = "Reading rotation"

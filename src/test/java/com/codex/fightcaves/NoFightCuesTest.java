@@ -31,7 +31,9 @@ public class NoFightCuesTest
 			// The wave ghost.
 			"ghost",
 			// The opt-in local record.
-			"fieldNotes")), keys);
+			"fieldNotes",
+			// The rotation clock.
+			"rotationClock")), keys);
 		assertEquals("codexfightcavespilot", CodexFightCavesPilotConfig.GROUP);
 	}
 

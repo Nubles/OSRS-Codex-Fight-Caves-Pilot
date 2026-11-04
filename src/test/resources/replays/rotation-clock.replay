@@ -1,0 +1,72 @@
+# The rotation clock (core/RotationClock): the wiki (TzHaar Fight Cave/Rotations) says the
+# rotation "is determined by the exact time when the player enters the caves" and "changes
+# exactly at every minute, except for Rotation 4, which lasts for two minutes". The order through
+# the 16 minute cycle is the Fight Caves Spawn Predictor's: at 00:02 (minute 2 of the cycle) it
+# gives rotation 9, then 11 at 00:03.
+#
+# A fresh account: the clock is shown at the cave mouth but is unproven, so in the cave the
+# spawns read the rotation. When they do, the clock's call is checked and filed.
+include /replays/scenes/mor-ul-rek.scene
+varp DATE_MINUTES 2
+varbit DATE_SECONDS_PAST_MINUTE 30
+login
+tick
+expect clock = 9
+expect next = "11 in 0:30"
+expect figure = null
+
+# Seconds tick on; the clock holds rotation 9 until the minute turns.
+varbit DATE_SECONDS_PAST_MINUTE 31
+tick
+expect next = "11 in 0:29"
+varp DATE_MINUTES 3
+varbit DATE_SECONDS_PAST_MINUTE 0
+tick
+expect clock = 11
+expect next = "13 in 1:00"
+
+# A clock that stops moving is not trusted: the plaque goes after five still ticks.
+tick 6
+expect clock = null
+varbit DATE_SECONDS_PAST_MINUTE 20
+tick
+expect clock = 11
+
+# Off by the setting.
+config rotationClock false
+varbit DATE_SECONDS_PAST_MINUTE 21
+tick
+expect clock = null
+config rotationClock true
+varbit DATE_SECONDS_PAST_MINUTE 22
+tick
+expect clock = 11
+
+# Walk in at 00:03:22: rotation 11, which spawns its first Tz-Kih south-east.
+include /replays/scenes/into-the-cave.scene
+varbit DATE_SECONDS_PAST_MINUTE 23
+tick
+expect clock = null
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+tick
+expect figure = "Wave 1"
+# Unproven here: the clock does not name the rotation.
+expect note = "Reading rotation"
+expect clockChecks = 0
+
+# Rotation 11 by the table (core/Rotations): wave 1 a Tz-Kih south-east (2419,5083: Spawn.SE is
+# 51,27 from the region's corner 2368,5056); wave 2 south-west (2382,5073) and centre (2400,5088).
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2419 5083 1 level 22 as kih1
+tick 3
+expect note = "Reading rotation"
+remove kih1
+tick 3
+chat GAMEMESSAGE "<col=ef1020>Wave: 2</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2382 5073 1 level 22 as kih2
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2400 5088 1 level 22 as kih3
+tick 3
+expect note = "Rotation 11"
+# The clock's call is checked against the spawns and filed: a hit.
+expect clockChecks = 1
+expect clockSaid = 11
+expect clockHit = true
