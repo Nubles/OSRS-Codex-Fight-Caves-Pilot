@@ -1,0 +1,6 @@
+# Walking in: the cave scene of cave.scene (region 9551, south-west corner 2368,5056, its
+# template tiles standing in for the instance), without logging in again.
+scene 2348 5036
+block 2348 5036 104 104
+open 2368 5056 64 64
+at 2400 5080

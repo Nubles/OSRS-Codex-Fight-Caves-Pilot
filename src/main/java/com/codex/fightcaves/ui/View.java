@@ -61,6 +61,24 @@ public final class View
 	/** The prayer doses in your bank as last seen, or null when the bank has not been seen. */
 	com.codex.fightcaves.core.Banked banked;
 
+	/** The rotation clock is on (the setting). */
+	boolean clockOn;
+	/** The game's clock at the cave mouth and when it was read, or null away from the cave. */
+	com.codex.fightcaves.core.RotationClock.Reading clockReading;
+	long clockReadAt;
+	/** Draw the clock at its reading rather than running it on, for previews. */
+	boolean clockFrozen;
+	/** Your fastest and steadiest rotations, and how far the clock has earned trust here. */
+	com.codex.fightcaves.core.RotationPicks picks;
+	com.codex.fightcaves.core.ClockTrust clockTrust;
+	/** In the cave: the rotation shown came from the clock, not yet the spawns. */
+	boolean fromClock;
+	/** In the cave: what the clock said as you went in (and the other side of a change), or 0. */
+	int clockSaid;
+	int clockAlt;
+	/** In the cave: whether the spawns bore the clock out, or null until they settle. */
+	Boolean clockHit;
+
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
 		int runTicks, Integer versusBest, Logbook book)
@@ -149,6 +167,45 @@ public final class View
 		this.ghostWaveDoses = ghostWaveDoses;
 		this.ghostWaveFood = ghostWaveFood;
 		return this;
+	}
+
+	/** Adds the rotation clock as seen outside the cave: the reading is null away from the cave mouth. */
+	public View withClock(com.codex.fightcaves.core.RotationClock.Reading reading, long readAt,
+		com.codex.fightcaves.core.RotationPicks picks, com.codex.fightcaves.core.ClockTrust trust)
+	{
+		clockOn = true;
+		clockReading = reading;
+		clockReadAt = readAt;
+		this.picks = picks;
+		clockTrust = trust;
+		return this;
+	}
+
+	/** Holds the clock at its reading, for previews and tests. */
+	public View frozenClock()
+	{
+		clockFrozen = true;
+		return this;
+	}
+
+	/**
+	 * Adds what the clock said as you went in, whether the rotation shown is the clock's alone,
+	 * and whether the spawns bore it out (null until they settle).
+	 */
+	public View withEntryClock(int said, int alt, boolean fromClock, Boolean hit, com.codex.fightcaves.core.ClockTrust trust)
+	{
+		clockOn = true;
+		clockSaid = said;
+		clockAlt = alt;
+		this.fromClock = fromClock;
+		clockHit = hit;
+		clockTrust = trust;
+		return this;
+	}
+
+	public boolean isFromClock()
+	{
+		return fromClock;
 	}
 
 	/** Ticks behind (positive) or ahead of the ghost at the end of the last wave cleared, or null. */

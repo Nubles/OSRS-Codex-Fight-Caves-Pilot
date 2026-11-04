@@ -1,7 +1,9 @@
 package com.codex.fightcaves;
 
+import com.codex.fightcaves.notes.FieldNotes;
 import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.CaveMap;
+import com.codex.fightcaves.core.ClockTrust;
 import com.codex.fightcaves.core.Damage;
 import com.codex.fightcaves.core.EarlyCall;
 import com.codex.fightcaves.core.Fall;
@@ -15,12 +17,15 @@ import com.codex.fightcaves.core.PrayerPacer;
 import com.codex.fightcaves.core.Presence;
 import com.codex.fightcaves.core.Protect;
 import com.codex.fightcaves.core.Ready;
+import com.codex.fightcaves.core.RotationClock;
+import com.codex.fightcaves.core.RotationPicks;
 import com.codex.fightcaves.core.RotationTracker;
 import com.codex.fightcaves.core.Spawn;
 import com.codex.fightcaves.core.Splits;
 import com.codex.fightcaves.core.Threat;
 import com.codex.fightcaves.core.Waves;
 import com.codex.fightcaves.core.WeaponRange;
+import com.codex.fightcaves.overlay.ClockPlaque;
 import com.codex.fightcaves.overlay.PilotPlaque;
 import com.codex.fightcaves.ui.Format;
 import com.codex.fightcaves.ui.PilotPanel;
@@ -63,6 +68,7 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
@@ -92,6 +98,15 @@ public class CodexFightCavesPilotPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexFightCavesPilotPlugin.class);
 	static final int FIGHT_CAVE_REGION = 9551;
+	/**
+	 * Mor Ul Rek, where the cave's entrance is (oldschool.runescape.wiki/w/TzHaar_Fight_Cave): its
+	 * map regions as RuneLite's own Discord plugin lists them (DiscordGameEventType.CITY_MOR_UL_REK).
+	 */
+	static final int[] MOR_UL_REK = {9808, 9807, 10064, 10063};
+	/** Ticks without the clock's seconds moving before it is taken as not being sent. */
+	private static final int CLOCK_STALE_TICKS = 5;
+	/** Ticks between the last clock read outside and entering the cave for it to count as the entry. */
+	private static final int CLOCK_ENTRY_TICKS = 5;
 	private static final String LOGBOOK_KEY = "logbook";
 	/** Where a save this version could not keep whole is put aside, once, before it is overwritten. */
 	private static final String BACKUP_KEY = "logbookBackup";
@@ -137,7 +152,24 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Inject
 	private CodexFightCavesPilotConfig config;
 
+	/** The optional local record of what the plugin read and decided. */
+	private FieldNotes notes;
+
 	private final PilotPlaque plaque = new PilotPlaque();
+	/** The rotation clock at the cave mouth. */
+	private final ClockPlaque clockPlaque = new ClockPlaque();
+	/** The game's clock as last read, when, and the tick its seconds last moved. */
+	private RotationClock.Reading clockNow;
+	private long clockReadAt;
+	private int clockMovedTick = Integer.MIN_VALUE / 2;
+	/** True while you stand outside the cave in Mor Ul Rek with the clock running. */
+	private boolean nearCave;
+	/** The clock on the last tick near the cave, and that tick. */
+	private RotationClock.Reading lastOutside;
+	private int lastOutsideTick = Integer.MIN_VALUE / 2;
+	/** What the clock said as this run went in, or null; and whether the spawns have judged it. */
+	private RotationClock.Forecast forecast;
+	private Boolean forecastHit;
 	private final RotationTracker tracker = new RotationTracker();
 	private final Presence presence = new Presence();
 	/** A wave call heard on the tick you were moved in, before your tile said so. */
@@ -222,6 +254,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		notes = new FieldNotes(this::getPluginDirectory, gson);
+		if (config.fieldNotes())
+		{
+			notes.open();
+		}
 		panel = new PilotPanel();
 		// The panel is only rebuilt while it is open, so bring it up to date as it opens.
 		panel.onOpen(() -> clientThread.invokeLater(() -> publish(true)));
@@ -233,6 +270,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 		overlayManager.add(plaque);
+		overlayManager.add(clockPlaque);
 		clientThread.invokeLater(() ->
 		{
 			loadProfile();
@@ -248,7 +286,14 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		if (notes != null)
+		{
+			notes.shutdown();
+			notes = null;
+		}
 		overlayManager.remove(plaque);
+		overlayManager.remove(clockPlaque);
+		clockPlaque.show(null, 0, null, null);
 		clientToolbar.removeNavigation(navButton);
 		clientThread.invokeLater(() ->
 		{
@@ -328,6 +373,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		if (CodexFightCavesPilotConfig.GROUP.equals(event.getGroup()) && "fieldNotes".equals(event.getKey()) && notes != null)
+		{
+			if (config.fieldNotes())
+			{
+				notes.open();
+			}
+			else
+			{
+				notes.close();
+			}
+			return;
+		}
 		// The logbook itself is saved under the same group; its own saves need no redraw.
 		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup())
 			&& !LOGBOOK_KEY.equals(event.getKey()) && !BACKUP_KEY.equals(event.getKey());
@@ -401,6 +458,19 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
+		if (notes != null && notes.isOpen())
+		{
+			net.runelite.api.ChatMessageType chatType = event.getType();
+			// Only the game's own lines: other players' chat is never written down.
+			if (chatType == net.runelite.api.ChatMessageType.GAMEMESSAGE || chatType == net.runelite.api.ChatMessageType.SPAM
+				|| chatType == net.runelite.api.ChatMessageType.MESBOX)
+			{
+				com.google.gson.JsonObject chatNote = new com.google.gson.JsonObject();
+				chatNote.addProperty("type", chatType.name());
+				chatNote.addProperty("text", event.getMessage());
+				notes.note("chat", chatNote);
+			}
+		}
 		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 		{
 			return;
@@ -478,6 +548,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			unsaved = true;
 		}
 		inCave = presence.isInside();
+		readClock(me);
 
 		if (inCave && here)
 		{
@@ -570,6 +641,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		resetCave();
 		sightings.addAll(early);
 		tracker.reset();
+		forecast = null;
+		forecastHit = null;
 		Logbook.Active a = book.active;
 		if (a != null)
 		{
@@ -588,7 +661,166 @@ public class CodexFightCavesPilotPlugin extends Plugin
 				tracker.assume(a.rotation);
 			}
 		}
+		else
+		{
+			forecastEntry();
+		}
 	}
+
+	// The rotation clock.
+
+	/** The game's clock now, or null when it does not read. */
+	private RotationClock.Reading clock()
+	{
+		int minutes = client.getVarpValue(VarPlayerID.DATE_MINUTES);
+		int seconds = client.getVarbitValue(VarbitID.DATE_SECONDS_PAST_MINUTE);
+		// Both zero is a clock not yet sent far more often than the stroke of midnight.
+		if (!RotationClock.valid(minutes, seconds) || minutes == 0 && seconds == 0)
+		{
+			return null;
+		}
+		return new RotationClock.Reading(minutes, seconds);
+	}
+
+	/** Reads the clock each tick, and notes it while you stand by the cave. */
+	private void readClock(Player me)
+	{
+		RotationClock.Reading r = config.rotationClock() ? clock() : null;
+		if (r == null)
+		{
+			clockNow = null;
+		}
+		else if (!r.equals(clockNow))
+		{
+			clockNow = r;
+			clockReadAt = System.currentTimeMillis();
+			clockMovedTick = tick;
+		}
+		boolean live = clockNow != null && tick - clockMovedTick <= CLOCK_STALE_TICKS;
+		nearCave = live && !inCave && inMorUlRek(me);
+		if (nearCave)
+		{
+			lastOutside = clockNow;
+			lastOutsideTick = tick;
+		}
+		updateClockPlaque();
+	}
+
+	/** True when you stand in Mor Ul Rek, the city around the cave's mouth, and not in an instance. */
+	private boolean inMorUlRek(Player me)
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		if (me == null || wv == null || wv.isInstance())
+		{
+			return false;
+		}
+		WorldPoint p = me.getWorldLocation();
+		if (p == null)
+		{
+			return false;
+		}
+		int region = p.getRegionID();
+		for (int r : MOR_UL_REK)
+		{
+			if (r == region)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * A fresh run went in: what did the clock say? The last reading by the cave mouth and the
+	 * first inside both count, as the server decides somewhere between them. Once the clock has
+	 * been right on this account it seeds the rotation reader, which the spawns can still overrule.
+	 */
+	private void forecastEntry()
+	{
+		forecast = null;
+		forecastHit = null;
+		tracker.clearPrior();
+		if (!config.rotationClock() || lastOutside == null || tick - lastOutsideTick > CLOCK_ENTRY_TICKS)
+		{
+			return;
+		}
+		RotationClock.Reading inside = clock();
+		forecast = RotationClock.Forecast.atEntry(lastOutside, inside);
+		if (notes != null && notes.isOpen())
+		{
+			// Both readings, so a miss near a minute's change can be traced to the second.
+			com.google.gson.JsonObject n = new com.google.gson.JsonObject();
+			n.addProperty("outside", lastOutside.toString());
+			n.addProperty("inside", String.valueOf(inside));
+			n.addProperty("ticksBefore", tick - lastOutsideTick);
+			n.addProperty("said", forecast.getSaid());
+			n.addProperty("alt", forecast.getAlt());
+			notes.note("clock", n);
+		}
+		lastOutside = null;
+		if (ClockTrust.of(book.clock).trusted())
+		{
+			tracker.prior(forecast.rotations());
+			if (config.chat() && !forecast.isSplit())
+			{
+				chat("the clock gives rotation " + forecast.getSaid() + " as you go in; the spawns will confirm it.");
+			}
+		}
+	}
+
+	/** When the spawns settle the rotation, files whether the clock called it. */
+	private String judgeClock(int rotation)
+	{
+		if (forecast == null || forecastHit != null || rotation <= 0 || !tracker.clean())
+		{
+			return "";
+		}
+		forecastHit = forecast.allows(rotation);
+		book.checkClock(forecast.getSaid(), forecast.getAlt(), rotation, forecast.getSecond(), System.currentTimeMillis());
+		if (notes != null && notes.isOpen())
+		{
+			com.google.gson.JsonObject n = new com.google.gson.JsonObject();
+			n.addProperty("said", forecast.getSaid());
+			n.addProperty("alt", forecast.getAlt());
+			n.addProperty("read", rotation);
+			n.addProperty("hit", forecastHit);
+			notes.note("clockCheck", n);
+		}
+		if (!forecastHit)
+		{
+			tracker.clearPrior();
+		}
+		return forecastHit ? " The clock called it." : " The clock said " + forecast.getSaid()
+			+ (forecast.isSplit() ? " or " + forecast.getAlt() : "") + "; the spawns win.";
+	}
+
+	private void updateClockPlaque()
+	{
+		if (!nearCave || book == null || !config.plaque())
+		{
+			if (clockPlaque.isShowing())
+			{
+				clockPlaque.show(null, 0, null, null);
+			}
+			return;
+		}
+		clockPlaque.show(clockNow, clockReadAt, picks(), ClockTrust.of(book.clock));
+	}
+
+	/** Your best rotations, worked out again only when a run is filed. */
+	private RotationPicks picks()
+	{
+		int key = book.runs.size() * 31 + book.attempts;
+		if (picks == null || picksKey != key)
+		{
+			picks = RotationPicks.of(book.runs);
+			picksKey = key;
+		}
+		return picks;
+	}
+
+	private RotationPicks picks;
+	private int picksKey = -1;
 
 	private void leaveCave()
 	{
@@ -628,6 +860,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private void resetCave()
 	{
+		tracker.clearPrior();
 		grid = null;
 		caveMap = null;
 		sightings.clear();
@@ -809,10 +1042,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			a.rotation = rotation;
 		}
+		String verdict = judgeClock(rotation);
+		if (tracker.priorContradicted())
+		{
+			// The spawns ruled the clock out before settling: it names nothing from here.
+			tracker.clearPrior();
+		}
 		// Not on Jad's wave, where the pilot says nothing at all.
 		if (rotation > 0 && rotation != before && config.chat() && wave < Waves.JAD)
 		{
-			chat("rotation " + rotation + ", read on wave " + wave + ".");
+			chat("rotation " + rotation + ", read on wave " + wave + "." + verdict);
 		}
 		if (rotation > 0 && tracker.clean() && found.size() == Waves.of(wave).size())
 		{
@@ -1251,6 +1490,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		String key = viewKey();
+		if (notes != null && notes.isOpen() && inCave)
+		{
+			// The rotation read, the candidates left and the wave, so a wrong read can be traced.
+			com.google.gson.JsonObject n = new com.google.gson.JsonObject();
+			n.addProperty("rotation", String.valueOf(tracker.rotation()));
+			n.addProperty("candidates", String.valueOf(tracker.candidates()));
+			n.addProperty("wave", book == null || book.active == null ? -1 : book.active.wave);
+			n.addProperty("doses", book == null || book.active == null ? -1 : book.active.dosesUsed);
+			notes.noteChanged("cave", n);
+		}
 		boolean changed = force || !key.equals(lastViewKey);
 		if (!changed)
 		{
@@ -1294,11 +1543,16 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			PrayerPacer.Pace full = pacer.pace(1, level, level, 0, 0, config.jadDoses());
 			PrayerPacer.Pace carried = prayerDoses + restoreDoses > 0
 				? pacer.pace(1, level, level, prayerDoses, restoreDoses, config.jadDoses()) : null;
-			return new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, prayer, level,
+			View o = new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, prayer, level,
 				pacer.learned(), full.getDosesNeeded(), 0, null, withBook ? copy(book) : null).withCarried(carried)
 				.withForecast(withBook ? Splits.forecast(book.runs, 1, 0, 0) : null)
 				.withReady(Ready.check(level, weaponName, weaponRange, ammo, foodCount, prayerDoses + restoreDoses))
 				.withBanked(withBook ? banked() : null);
+			if (config.rotationClock())
+			{
+				o.withClock(nearCave ? clockNow : null, clockReadAt, picks(), ClockTrust.of(book.clock));
+			}
+			return o;
 		}
 		Logbook.Active a = book.active;
 		int wave = a == null ? 0 : a.wave;
@@ -1318,13 +1572,18 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		// Raced against your best run's ghost at the end of the last wave cleared.
 		Ghost ghost = Ghost.of(book.runs, null);
 		Integer versus = a != null && wave > 1 && ghost != null ? ghost.behind(wave - 1, a.waveStartTick, a.partial) : null;
-		int rotation = tracker.rotation();
+		// The spawns' rotation, or the clock's while it stands unchallenged.
+		int rotation = tracker.likely();
 		List<Placement> observed = observedWave == wave ? observed() : java.util.Collections.emptyList();
 		View v = new View(View.State.IN_CAVE, wave, rotation, tracker.candidates(), tracker.decidingWave(wave + 1), tracker.clean(),
 			aliveFoes().size(), pace, prayer, level, pacer.learned(), 0, a == null ? 0 : a.ticks, versus, withBook ? copy(book) : null)
 			.withObserved(observed)
 			.withPartial(a != null && a.partial)
 			.withForecast(withBook && a != null && !a.partial ? Splits.forecast(book.runs, wave, a.ticks, a.ticks - a.waveStartTick) : null);
+		if (forecast != null && config.rotationClock())
+		{
+			v.withEntryClock(forecast.getSaid(), forecast.getAlt(), tracker.fromPrior(), forecastHit, ClockTrust.of(book.clock));
+		}
 		if (a != null && ghost != null)
 		{
 			v.withGhost(ghost.isCape(), ghost.getCleared(), ghost.splits(a.splits, a.doses, a.food, wave - 1, a.partial));
@@ -1367,7 +1626,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private String viewKey()
 	{
 		StringBuilder k = new StringBuilder();
-		k.append(client.getGameState()).append(inCave).append(tracker.rotation())
+		k.append(client.getGameState()).append(inCave).append(tracker.rotation()).append('~').append(tracker.likely())
+			.append(forecastHit).append(nearCave).append(clockNow == null ? -1 : clockNow.rotation()).append('c').append(book == null ? 0 : book.clock.size())
 			.append(tracker.candidates()).append(book == null ? "" : book.attempts + "/" + book.capes)
 			.append(book == null || book.active == null ? "" : book.active.wave + "/" + book.active.dosesUsed + "/" + sum(book.active.food))
 			.append(prayerDoses).append('/').append(restoreDoses).append('/').append(client.getBoostedSkillLevel(Skill.PRAYER));
@@ -1399,7 +1659,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			plaque.show(null, null, null, null, null, null);
 			return;
 		}
-		String note = v.getRotation() > 0 ? "Rotation " + v.getRotation() : "Reading rotation";
+		String note = v.getRotation() > 0 ? "Rotation " + v.getRotation() + (v.isFromClock() ? " (clock)" : "") : "Reading rotation";
 		PrayerPacer.Pace pace = v.getPace();
 		String prayer = pace == null ? null : Format.doses(pace.getDoses()) + " (" + Format.spare(pace.getSpare()) + ")";
 		Integer behind = config.ghost() ? v.getVersusBest() : null;

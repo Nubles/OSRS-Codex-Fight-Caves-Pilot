@@ -461,10 +461,24 @@ public class PilotPanel extends PluginPanel
 	private Card rotationCard()
 	{
 		Card card = new Card(new BorderLayout(0, 2));
+		if (view.rotation > 0 && view.fromClock)
+		{
+			card.add(Ui.label("Rotation " + view.rotation, Theme.title(), Theme.GOLD_BRIGHT), BorderLayout.NORTH);
+			String text = "From the clock as you went in, which has been right on your runs. The spawns have the last word"
+				+ (view.decidingWave > 0 ? " and will confirm it by wave " + view.decidingWave + "." : ".");
+			card.add(Ui.wrapped(text, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
+			if (view.book != null)
+			{
+				card.add(Ui.wrapped(recordLine(RotationRecord.of(view.book.runs, view.rotation)), Theme.small(), Theme.GOLD_DIM, WIDTH - 40), BorderLayout.SOUTH);
+			}
+			card.accent(Theme.GOLD);
+			return card;
+		}
 		if (view.rotation > 0)
 		{
 			card.add(Ui.label("Rotation " + view.rotation, Theme.title(), Theme.GOLD_BRIGHT), BorderLayout.NORTH);
 			String text = view.clean ? "Read from the spawns. Every wave so far matched it." : "Read from the spawns. One wave disagreed, so keep an eye on the next spawns.";
+			text += clockVerdict();
 			card.add(Ui.wrapped(text, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
 			if (view.book != null)
 			{
@@ -483,9 +497,29 @@ public class PilotPanel extends PluginPanel
 		{
 			text = "Rotation " + join(view.candidates) + "." + (view.decidingWave > 0 ? " Wave " + view.decidingWave + " settles it." : "");
 		}
+		if (view.clockSaid > 0)
+		{
+			text += " The clock said " + (view.clockAlt > 0 ? view.clockSaid + " or " + view.clockAlt : String.valueOf(view.clockSaid))
+				+ (view.clockTrust != null && view.clockTrust.trusted() ? "." : "; it is still earning trust on this account, so the spawns decide.");
+		}
 		card.add(Ui.wrapped(text, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
 		card.accent(Theme.TEAL);
 		return card;
+	}
+
+	/** What the spawns made of the clock's call as you went in, or nothing with no call. */
+	private String clockVerdict()
+	{
+		if (view.clockSaid <= 0 || view.clockHit == null)
+		{
+			return "";
+		}
+		if (view.clockHit)
+		{
+			return " The clock called it as you went in.";
+		}
+		return " The clock said " + (view.clockAlt > 0 ? view.clockSaid + " or " + view.clockAlt : String.valueOf(view.clockSaid))
+			+ "; the spawns win, and the miss is counted against it.";
 	}
 
 	/** "Rotation 9 so far: 2 capes from 3 runs, best 45:12. Wave 46 ended 2 of them." */
@@ -547,6 +581,10 @@ public class PilotPanel extends PluginPanel
 	{
 		Logbook b = view.book;
 		stack.add(note("At the cave mouth", "Step in and the pilot reads your rotation from the first spawns, races your best run's ghost wave by wave and counts the doses and food each wave takes. The fighting is yours."));
+		if (view.clockOn)
+		{
+			buildClock(stack, b);
+		}
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
 		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Doses a run", view.paceLearned ? "at your rate" : "a first guess", Theme.TEAL));
@@ -586,6 +624,68 @@ public class PilotPanel extends PluginPanel
 		stack.add(new SectionHeader("How it reads the cave"));
 		stack.add(Ui.wrapped("Wave 1 narrows the 15 rotations to three and wave 2 nearly always settles it; rotations 7 and 8 wait for wave 4. Creatures are coloured by the prayer that answers them: ember melee, green range, violet magic.",
 			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+	}
+
+	/**
+	 * The rotation clock: at the cave mouth, the dial with the rotation you would get now, your
+	 * best rotations' waits and the next few; anywhere else outside, a word on where to see it.
+	 * Beneath, how the clock has done against the spawns on this account.
+	 */
+	private void buildClock(StackPanel stack, Logbook b)
+	{
+		com.codex.fightcaves.core.ClockTrust trust = view.clockTrust;
+		stack.add(new SectionHeader("Rotation clock", clockTag(trust)));
+		Card card = new Card(new BorderLayout(0, 8));
+		if (view.clockReading != null)
+		{
+			card.add(new ClockDial(view.clockReading, view.clockReadAt, view.picks, b.runs, view.clockFrozen), BorderLayout.CENTER);
+		}
+		else
+		{
+			card.add(Ui.label("Away from the cave", Theme.title(), Theme.GOLD), BorderLayout.NORTH);
+			card.add(Ui.wrapped("At the cave mouth in Mor Ul Rek the pilot reads the game's clock and shows which rotation you would get if you went in, and when your best ones come up.",
+				Theme.small(), Theme.TEXT_FAINT, WIDTH - 40), BorderLayout.CENTER);
+		}
+		if (trust != null)
+		{
+			Color words = trust.getLevel() == com.codex.fightcaves.core.ClockTrust.Level.DOUBTFUL ? Theme.EMBER : Theme.TEXT_MUTED;
+			card.add(Ui.wrapped(trust.describe(), Theme.small(), words, WIDTH - 40), BorderLayout.SOUTH);
+		}
+		card.accent(clockColor(trust));
+		if (view.clockReading != null)
+		{
+			card.highlighted(true);
+		}
+		stack.add(card);
+	}
+
+	/** The clock's record in a word or two, for its heading. */
+	static String clockTag(com.codex.fightcaves.core.ClockTrust trust)
+	{
+		if (trust == null || trust.getChecks() == 0)
+		{
+			return "unproven";
+		}
+		return trust.getHits() + " of " + trust.getChecks() + " right";
+	}
+
+	private static Color clockColor(com.codex.fightcaves.core.ClockTrust trust)
+	{
+		if (trust == null)
+		{
+			return Theme.TEXT_MUTED;
+		}
+		switch (trust.getLevel())
+		{
+			case TRUSTED:
+				return Theme.GREEN;
+			case DOUBTFUL:
+				return Theme.EMBER;
+			case SHAKY:
+				return Theme.GOLD;
+			default:
+				return Theme.TEXT_MUTED;
+		}
 	}
 
 	/** The ready check: each line fine or not, under a title that says whether all are. */

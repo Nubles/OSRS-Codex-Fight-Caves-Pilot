@@ -89,8 +89,31 @@ public final class Logbook
 		public Map<Integer, List<String>> seen = new HashMap<>();
 	}
 
+	/**
+	 * One run's check of the rotation clock: what the clock said as you went in (and the rotation
+	 * either side of a change, or 0), what the spawns then read, and the second past the minute.
+	 */
+	public static final class ClockCheck
+	{
+		public int said;
+		public int alt;
+		public int read;
+		public int second;
+		public long at;
+
+		public boolean hit()
+		{
+			return read == said || alt > 0 && read == alt;
+		}
+	}
+
+	/** The most clock checks kept, newest last. */
+	public static final int KEEP_CLOCK = 30;
+
 	public Active active;
 	public List<Run> runs = new ArrayList<>();
+	/** The rotation clock against the spawns, a check a run, newest last. */
+	public List<ClockCheck> clock = new ArrayList<>();
 	public int attempts;
 	public int capes;
 	public int bestTicks;
@@ -355,6 +378,21 @@ public final class Logbook
 		{
 			outlooks = new HashMap<>();
 		}
+		if (clock == null)
+		{
+			clock = new ArrayList<>();
+		}
+		// A check that names no real rotation says nothing about the clock.
+		clock.removeIf(c -> c == null || c.said < 1 || c.said > Rotations.COUNT || c.read < 1 || c.read > Rotations.COUNT
+			|| c.alt < 0 || c.alt > Rotations.COUNT);
+		for (ClockCheck c : clock)
+		{
+			c.second = clamp(c.second, 0, 59);
+		}
+		if (clock.size() > KEEP_CLOCK)
+		{
+			clock = new ArrayList<>(clock.subList(clock.size() - KEEP_CLOCK, clock.size()));
+		}
 		noneBelowZero(deaths);
 		noneBelowZero(rotations);
 		attempts = Math.max(0, attempts);
@@ -453,6 +491,23 @@ public final class Logbook
 			}
 		}
 		runs = kept;
+	}
+
+	/** Files a check of the rotation clock against the spawns, keeping the last {@link #KEEP_CLOCK}. */
+	public ClockCheck checkClock(int said, int alt, int read, int second, long now)
+	{
+		ClockCheck c = new ClockCheck();
+		c.said = said;
+		c.alt = alt;
+		c.read = read;
+		c.second = second;
+		c.at = now;
+		clock.add(c);
+		while (clock.size() > KEEP_CLOCK)
+		{
+			clock.remove(0);
+		}
+		return c;
 	}
 
 	/** Closes the run in progress and files it. */

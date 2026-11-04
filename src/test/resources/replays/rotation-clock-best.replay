@@ -1,0 +1,15 @@
+# Your best rotation and when it comes up. The saved logbook holds one cape, on rotation 13, so
+# it is your fastest. At 00:02:30 rotation 9 is on; 13 comes on at 00:04:00, in 1:30 (see
+# rotation-clock.replay for the sources). At 00:04:10 it is on.
+include /replays/scenes/mor-ul-rek.scene
+saved logbook {runs:[{rotation:13,result:CAPE,wave:63,ticks:4500,endedAt:1767000000000,firstWave:1}],attempts:1,capes:1,bestTicks:4500,furthest:63}   # Gson reads it leniently: the script cannot hold quotes
+varp DATE_MINUTES 2
+varbit DATE_SECONDS_PAST_MINUTE 30
+login
+tick
+expect line = "Your fastest, 13, in 1:30"
+varp DATE_MINUTES 4
+varbit DATE_SECONDS_PAST_MINUTE 10
+tick
+expect clock = 13
+expect line = "Your fastest, 13, is on now"

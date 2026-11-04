@@ -1,0 +1,33 @@
+# The spawns always win. The clock has been right three runs running, so it names rotation 9 as
+# you walk in at 00:02:30 (see rotation-clock.replay), but wave 1 spawns in the centre
+# (2400,5088: Spawn.C is 32,32 from the region's corner 2368,5056), where rotation 9 never
+# starts: only rotations 1, 2 and 3 do (core/Rotations). The clock's name is dropped at once,
+# the miss is filed, and wave 2 (rotation 2: south 2405,5073 and south-east 2419,5083) settles it.
+include /replays/scenes/mor-ul-rek.scene
+watch lastHit book.clock.3.hit
+watch lastRead book.clock.3.read
+saved logbook {clock:[{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1}]}   # Gson reads it leniently: the script cannot hold quotes
+varp DATE_MINUTES 2
+varbit DATE_SECONDS_PAST_MINUTE 30
+login
+tick
+include /replays/scenes/into-the-cave.scene
+varbit DATE_SECONDS_PAST_MINUTE 31
+tick
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+tick
+expect note = "Rotation 9 (clock)"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2400 5088 1 level 22 as kih1
+tick 3
+never note = "Rotation 9 (clock)"
+expect note = "Reading rotation"
+remove kih1
+tick 3
+chat GAMEMESSAGE "<col=ef1020>Wave: 2</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2405 5073 1 level 22 as kih2
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2419 5083 1 level 22 as kih3
+tick 3
+expect note = "Rotation 2"
+expect clockChecks = 4
+expect lastHit = false
+expect lastRead = 2

@@ -1,0 +1,37 @@
+# The rotation clock on an account where it has been right three runs running (core/ClockTrust):
+# it names the rotation from the moment you walk in, and the spawns confirm it. Entering at
+# 00:02:30 gives rotation 9 (see rotation-clock.replay for the sources); rotation 9 spawns wave 1
+# south (2405,5073: Spawn.S is 37,17 from the region's corner 2368,5056) and wave 2 south-east
+# (2419,5083) and centre (2400,5088).
+include /replays/scenes/mor-ul-rek.scene
+watch lastHit book.clock.3.hit
+saved logbook {clock:[{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1},{said:9,read:9,second:30,at:1}]}   # Gson reads it leniently: the script cannot hold quotes
+varp DATE_MINUTES 2
+varbit DATE_SECONDS_PAST_MINUTE 29
+login
+tick
+expect clock = 9
+varbit DATE_SECONDS_PAST_MINUTE 30
+tick
+include /replays/scenes/into-the-cave.scene
+varbit DATE_SECONDS_PAST_MINUTE 31
+tick
+expect clock = null
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+tick
+expect figure = "Wave 1"
+# Named by the clock before a single creature has spawned.
+expect note = "Rotation 9 (clock)"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2405 5073 1 level 22 as kih1
+tick 3
+expect note = "Rotation 9 (clock)"
+remove kih1
+tick 3
+chat GAMEMESSAGE "<col=ef1020>Wave: 2</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2419 5083 1 level 22 as kih2
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2382 5073 1 level 22 as kih3
+tick 3
+# Confirmed by the spawns: no longer the clock's word alone, and a fourth hit is filed.
+expect note = "Rotation 9"
+expect clockChecks = 4
+expect lastHit = true
