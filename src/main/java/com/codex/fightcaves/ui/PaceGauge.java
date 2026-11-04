@@ -99,8 +99,6 @@ class PaceGauge extends JComponent
 		int ly = vy + vh + 4 + small.getAscent();
 		String spare = Format.spare(pace.getSpare()) + " spare";
 		Ui.shadowed(g, spare, 0, ly, color);
-		String sip = "sip at " + pace.getDrinkBelow() + " or below";
-		Ui.shadowed(g, Ui.clip(sip, small, w - small.stringWidth(spare) - 10), w - small.stringWidth(sip), ly, Theme.TEXT_MUTED);
 		g.dispose();
 	}
 }

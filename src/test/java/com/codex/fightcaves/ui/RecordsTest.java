@@ -34,7 +34,7 @@ public class RecordsTest
 		javax.swing.SwingUtilities.invokeAndWait(() ->
 		{
 			PilotPanel panel = new PilotPanel();
-			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, 70, 70, false, 24, 0, null, new Logbook()));
+			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, 70, 70, false, 24, 0, null, new Logbook()));
 			List<String> values = new ArrayList<>();
 			tiles(panel.recordsPage(), values);
 			assertEquals(Arrays.asList("-", "-", "-", "-"), values);

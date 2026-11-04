@@ -12,7 +12,7 @@ public class QuietTest
 	private static View inCave(Logbook book)
 	{
 		int wave = book.active == null ? 0 : book.active.wave;
-		return new View(View.State.IN_CAVE, wave, 0, null, 0, false, 1, null, null, null, 50, 70, false, 0, 0, null, book);
+		return new View(View.State.IN_CAVE, wave, 0, null, 0, false, 1, null, 50, 70, false, 0, 0, null, book);
 	}
 
 	@Test
@@ -29,7 +29,7 @@ public class QuietTest
 	@Test
 	public void outsideTheCaveIsNeverQuiet()
 	{
-		assertFalse(new View(View.State.OUTSIDE, Waves.JAD, 0, null, 0, false, 0, null, null, null, 50, 70, false, 0, 0, null, new Logbook()).quiet());
+		assertFalse(new View(View.State.OUTSIDE, Waves.JAD, 0, null, 0, false, 0, null, 50, 70, false, 0, 0, null, new Logbook()).quiet());
 	}
 
 	@Test
@@ -40,7 +40,7 @@ public class QuietTest
 			// Last drawn outside the cave, Waves page and all; closed; then opened on Jad's wave.
 			PilotPanel panel = new PilotPanel();
 			Logbook book = new Logbook();
-			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, 50, 70, false, 0, 0, null, book));
+			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, 50, 70, false, 0, 0, null, book));
 			panel.onDeactivate();
 			assertFalse(panel.steppedBack(1));
 			panel.jadWave(true);
@@ -58,7 +58,7 @@ public class QuietTest
 		javax.swing.SwingUtilities.invokeAndWait(() ->
 		{
 			PilotPanel panel = new PilotPanel();
-			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, 50, 70, false, 0, 0, null, new Logbook()));
+			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, 50, 70, false, 0, 0, null, new Logbook()));
 			panel.jadWave(false);
 			panel.onActivate();
 			assertFalse(panel.steppedBack(1));
@@ -91,9 +91,9 @@ public class QuietTest
 			book.bestTicks = 63 * 50;
 			book.furthest = Waves.LAST;
 			PilotPanel panel = new PilotPanel();
-			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 5, null, null, null, 50, 70, false, 0, 0, null, book));
+			panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 5, null, 50, 70, false, 0, 0, null, book));
 			assertTrue(contains(panel, FormStrip.class));
-			panel.update(new View(View.State.IN_CAVE, Waves.JAD, 0, null, 0, false, 5, null, null, null, 50, 70, false, 0, 0, null, book));
+			panel.update(new View(View.State.IN_CAVE, Waves.JAD, 0, null, 0, false, 5, null, 50, 70, false, 0, 0, null, book));
 			for (int tab = 0; tab < 3; tab++)
 			{
 				assertTrue(panel.steppedBack(tab));

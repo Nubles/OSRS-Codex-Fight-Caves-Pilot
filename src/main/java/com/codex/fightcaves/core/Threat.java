@@ -6,9 +6,9 @@ import java.util.List;
 
 /**
  * A creature that can hit you now or within a couple of ticks from where you stand, and the
- * style it hits with from there (a ranger or mager beside you hits with melee). The prayer call,
- * the danger line and the fall review all start from these. Jad is never weighed: when he is on
- * the floor the list is empty, as his attacks are yours to read.
+ * style it hits with from there (a ranger or mager beside you hits with melee). Kept tick by tick
+ * for the fall review, which reads them only once a run has ended: nothing is shown or said from
+ * them during a wave. Jad is never weighed: when he is on the floor the list is empty.
  */
 public final class Threat
 {
@@ -42,10 +42,10 @@ public final class Threat
 	}
 
 	/** What can hit you soon at a tile; empty when nothing can or Jad is on the floor. */
-	public static List<Threat> of(Grid grid, List<StandPlanner.Foe> foes, int x, int y)
+	public static List<Threat> of(Grid grid, List<Foe> foes, int x, int y)
 	{
 		List<Threat> list = new ArrayList<>();
-		for (StandPlanner.Foe f : foes)
+		for (Foe f : foes)
 		{
 			if (f.monster == Monster.TZTOK_JAD)
 			{
@@ -77,17 +77,5 @@ public final class Threat
 			}
 		}
 		return sum;
-	}
-
-	/**
-	 * The damage that could land on you at once when it is enough to kill you, otherwise 0: the
-	 * cue to eat. Only what your prayer lets through counts.
-	 *
-	 * @param hp your hitpoints now
-	 */
-	public static int danger(List<Threat> threats, Protect up, int hp)
-	{
-		int could = unblocked(threats, up);
-		return hp > 0 && could >= hp ? could : 0;
 	}
 }

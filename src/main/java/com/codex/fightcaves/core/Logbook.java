@@ -45,6 +45,10 @@ public final class Logbook
 		public List<Integer> splits = new ArrayList<>();
 		/** Damage you took on each wave, wave 1 first. */
 		public List<Integer> hurt = new ArrayList<>();
+		/** Doses of prayer potion, super restore and sanfew drunk on each wave, wave 1 first. */
+		public List<Integer> doses = new ArrayList<>();
+		/** Pieces of food eaten on each wave, wave 1 first. */
+		public List<Integer> food = new ArrayList<>();
 		/** True when the run was not watched from wave 1 or a wave went unseen, so its time is not a record. */
 		public boolean partial;
 		/** The first wave the pilot saw, 0 or 1 for a run watched from the start. */
@@ -73,6 +77,10 @@ public final class Logbook
 		public List<Integer> splits = new ArrayList<>();
 		/** Damage you took on each wave so far, wave 1 first, the wave on now included. */
 		public List<Integer> hurt = new ArrayList<>();
+		/** Doses drunk on each wave so far, wave 1 first, the wave on now included. */
+		public List<Integer> doses = new ArrayList<>();
+		/** Food eaten on each wave so far, wave 1 first, the wave on now included. */
+		public List<Integer> food = new ArrayList<>();
 		/** True once the run has a wave the pilot did not see from start to end. */
 		public boolean partial;
 		/** The first wave the pilot saw, 0 or 1 for a run watched from the start. */
@@ -96,7 +104,10 @@ public final class Logbook
 	public Map<String, List<String>> corrections = new HashMap<>();
 	/** Runs per rotation, rotations 1 to 15. */
 	public int[] rotations = new int[Rotations.COUNT + 1];
-	/** "rotation:reach" to the road to Jad worked out for it, one letter per wave (see {@link Outlook}). */
+	/**
+	 * Wave ratings an older version worked out from where to stand. Nothing reads them now, as the
+	 * pilot gives no in-fight cues; they are kept only so an older save loses nothing when written.
+	 */
 	public Map<String, String> outlooks = new HashMap<>();
 	/** Prayer doses in the bank as the pilot last counted them, or -1 before it has seen the bank. */
 	public long bankDoses = -1;
@@ -364,6 +375,8 @@ public final class Logbook
 		{
 			r.splits = filled(r.splits);
 			r.hurt = filled(r.hurt);
+			r.doses = filled(r.doses);
+			r.food = filled(r.food);
 			if (r.fallHp != null && r.fallHp.contains(null))
 			{
 				r.fallHp = null;
@@ -397,6 +410,8 @@ public final class Logbook
 		{
 			active.splits = filled(active.splits);
 			active.hurt = filled(active.hurt);
+			active.doses = filled(active.doses);
+			active.food = filled(active.food);
 			if (active.seen == null)
 			{
 				active.seen = new HashMap<>();
@@ -456,6 +471,8 @@ public final class Logbook
 		run.dosesUsed = active.dosesUsed;
 		run.splits = new ArrayList<>(active.splits);
 		run.hurt = new ArrayList<>(active.hurt);
+		run.doses = new ArrayList<>(active.doses);
+		run.food = new ArrayList<>(active.food);
 		run.partial = active.partial;
 		run.firstWave = active.firstWave;
 		runs.add(run);
@@ -574,6 +591,31 @@ public final class Logbook
 			a.hurt.add(0);
 		}
 		a.hurt.set(a.wave - 1, a.hurt.get(a.wave - 1) + damage);
+	}
+
+	/** Adds doses drunk to the wave on now. */
+	public static void drank(Active a, int doses)
+	{
+		addAt(a, a.doses, doses);
+	}
+
+	/** Adds food eaten to the wave on now. */
+	public static void ate(Active a, int pieces)
+	{
+		addAt(a, a.food, pieces);
+	}
+
+	private static void addAt(Active a, List<Integer> list, int n)
+	{
+		if (a.wave < 1 || a.wave > Waves.LAST || n <= 0)
+		{
+			return;
+		}
+		while (list.size() < a.wave)
+		{
+			list.add(0);
+		}
+		list.set(a.wave - 1, list.get(a.wave - 1) + n);
 	}
 
 	/** Sets wave w's entry in a per-wave list, filling any gap before it with zeros. */

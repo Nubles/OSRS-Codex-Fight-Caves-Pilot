@@ -24,8 +24,9 @@ import javax.swing.JComponent;
 
 /**
  * A chart of the cave, north up: the five spawn points, a wave's creatures standing on them as
- * discs in their prayer's colour and sized by their bulk, and where to stand. A second, fainter
- * wave can be drawn underneath, so the wave now and the wave to come read together.
+ * discs in their prayer's colour and sized by their bulk. A second, fainter wave can be drawn
+ * underneath, so a wave and the one after it read together. It is a study chart for the Waves
+ * page, like a rotation table: it never marks where to stand or where you are.
  */
 public class CaveChart extends JComponent
 {
@@ -45,9 +46,6 @@ public class CaveChart extends JComponent
 	private String corner = "";
 	private List<Placement> wave = Collections.emptyList();
 	private List<Placement> faint = Collections.emptyList();
-	private double[] stand;
-	private boolean standNext;
-	private double[] you;
 
 	public CaveChart(int height)
 	{
@@ -59,18 +57,13 @@ public class CaveChart extends JComponent
 	/**
 	 * @param wave the creatures drawn in full
 	 * @param faint creatures drawn as outlines beneath, such as the wave still on the floor
-	 * @param stand where to stand as fractions of the cave, or null
-	 * @param you where you are as fractions of the cave, or null
 	 */
-	public void show(String caption, String corner, List<Placement> wave, List<Placement> faint, double[] stand, boolean standNext, double[] you)
+	public void show(String caption, String corner, List<Placement> wave, List<Placement> faint)
 	{
 		this.caption = caption == null ? "" : caption;
 		this.corner = corner == null ? "" : corner;
 		this.wave = wave == null ? Collections.emptyList() : wave;
 		this.faint = faint == null ? Collections.emptyList() : faint;
-		this.stand = stand;
-		this.standNext = standNext;
-		this.you = you;
 		repaint();
 	}
 
@@ -146,21 +139,6 @@ public class CaveChart extends JComponent
 		paintWave(g, faint, true, left, top, cw, ch);
 		paintWave(g, wave, false, left, top, cw, ch);
 
-		if (you != null)
-		{
-			Point2D p = at(you, left, top, cw, ch);
-			g.setColor(Theme.alpha(Theme.TEAL, 60));
-			g.fill(new Ellipse2D.Double(p.getX() - 6, p.getY() - 6, 12, 12));
-			g.setColor(Theme.TEAL);
-			g.fill(new Ellipse2D.Double(p.getX() - 3, p.getY() - 3, 6, 6));
-			g.setColor(Theme.INK_DEEP);
-			g.draw(new Ellipse2D.Double(p.getX() - 3, p.getY() - 3, 6, 6));
-		}
-		if (stand != null)
-		{
-			paintStand(g, at(stand, left, top, cw, ch), standNext);
-		}
-
 		g.setClip(null);
 		g.setFont(Theme.small());
 		Ui.shadowed(g, caption, 9, 4 + small.getAscent(), Theme.GOLD);
@@ -226,26 +204,6 @@ public class CaveChart extends JComponent
 			g.setColor(Theme.INK_DEEP);
 			g.drawString(label, (float) (x - fm.stringWidth(label) / 2.0), (float) (y + fm.getAscent() / 2.0 - 1));
 		}
-	}
-
-	private static void paintStand(Graphics2D g, Point2D p, boolean next)
-	{
-		Color color = next ? Theme.TEAL : Theme.GOLD_BRIGHT;
-		double x = p.getX();
-		double y = p.getY();
-		g.setPaint(new RadialGradientPaint((float) x, (float) y, 14, new float[]{0, 1},
-			new Color[]{Theme.alpha(color, 110), Theme.alpha(color, 0)}));
-		g.fill(new Ellipse2D.Double(x - 14, y - 14, 28, 28));
-		Path2D diamond = new Path2D.Double();
-		diamond.moveTo(x, y - 6);
-		diamond.lineTo(x + 6, y);
-		diamond.lineTo(x, y + 6);
-		diamond.lineTo(x - 6, y);
-		diamond.closePath();
-		g.setPaint(new GradientPaint((float) x, (float) (y - 6), Color.WHITE, (float) x, (float) (y + 6), color));
-		g.fill(diamond);
-		g.setColor(Theme.INK_DEEP);
-		g.draw(diamond);
 	}
 
 	private static Point2D at(double[] f, float left, float top, float cw, float ch)

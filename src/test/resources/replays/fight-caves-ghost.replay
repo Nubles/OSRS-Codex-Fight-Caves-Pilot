@@ -1,0 +1,56 @@
+# The wave ghost: a run raced against the best one in the logbook, wave by wave, with the doses
+# and food each wave took. The saved logbook holds one cape of 63 waves at 6 ticks each (3.6
+# seconds; a tick is 0.6 seconds, oldschool.runescape.wiki/w/Game_tick) that drank a dose on
+# wave 2 and ate twice on wave 3. Waves and creatures as in cave.scene
+# (oldschool.runescape.wiki/w/TzHaar_Fight_Cave: wave 1 one Tz-Kih, wave 2 two, wave 3 one Tz-Kek).
+saved logbook {runs:[{rotation:4,result:CAPE,wave:63,ticks:378,endedAt:1767000000000,dosesUsed:1,splits:[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6],doses:[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],food:[0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],partial:false,firstWave:1}],attempts:1,capes:1,bestTicks:378,furthest:63}   # Gson reads it leniently: the script cannot hold quotes
+item _4DOSEPRAYERRESTORE "Prayer potion(4)"
+item _3DOSEPRAYERRESTORE "Prayer potion(3)"
+item SHARK "Shark"
+include /replays/scenes/cave.scene
+watch waveFood book.active.food
+watch waveDoses book.active.doses
+items INV _4DOSEPRAYERRESTORE 2
+items INV SHARK 3
+tick 2
+
+chat GAMEMESSAGE "<col=ef1020>Wave: 1</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2381 5105 1 level 22 as kih1
+tick 3
+expect figure = "Wave 1"
+# Nothing to race until a wave is cleared.
+expect ghost = null
+remove kih1
+tick 5
+
+chat GAMEMESSAGE "<col=ef1020>Wave: 2</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2400 5088 1 level 22 as kih2
+npc TZHAAR_FIGHTCAVE_SWARM_1A Tz-Kih 2405 5073 1 level 22 as kih3
+tick 1
+# Wave 1 took 8 ticks against the ghost's 6: behind by 1.2 seconds.
+expect ghost = "Ghost +0:01"
+# A dose and a shark on wave 2.
+items INV set _4DOSEPRAYERRESTORE 1 _3DOSEPRAYERRESTORE 1 SHARK 2
+tick 1
+expect waveDoses = "[0, 1]"
+expect waveFood = "[0, 1]"
+remove kih2
+remove kih3
+tick 1
+
+chat GAMEMESSAGE "<col=ef1020>Wave: 3</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_2A Tz-Kek 2405 5073 2 level 45 as kek
+tick 1
+# Wave 2 took 3 ticks against 6: 11 ticks on the clock against the ghost's 12, ahead.
+expect ghost = "Ghost -0:01"
+# Nothing used on wave 3 yet: the list only grows when something is.
+expect waveDoses = "[0, 1]"
+remove kek
+tick 2
+
+# Jad's wave: the pilot steps back. No plaque, so no ghost, whatever the clock says.
+chat GAMEMESSAGE "<col=ef1020>Wave: 63</col>"
+npc TZHAAR_FIGHTCAVE_SWARM_BOSS TzTok-Jad 2400 5100 5 level 702 as jad
+tick 2
+expect figure = null
+expect ghost = null

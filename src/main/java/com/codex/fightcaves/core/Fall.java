@@ -201,7 +201,7 @@ public final class Fall
 				names.add("the " + who.get(p).iterator().next());
 			}
 			return new Review(Cause.TWO_STYLES, capital(and(names.subList(0, Math.min(2, names.size())))) + " reached you at once, and one prayer"
-				+ " cannot block both. A tile where one of them is stuck splits them: the gilt tile looks for it.", hp);
+				+ " cannot block both.", hp);
 		}
 		if (heavy != null && bare >= half && bare >= wrong)
 		{
