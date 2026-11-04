@@ -121,6 +121,6 @@ public class RunScrollTest
 
 	private static View view(View.State state, int wave)
 	{
-		return new View(state, wave, 9, Collections.singletonList(9), 0, true, 1, null, null, null, 50, 70, true, 0, 0, null, new Logbook());
+		return new View(state, wave, 9, Collections.singletonList(9), 0, true, 1, null, 50, 70, true, 0, 0, null, new Logbook());
 	}
 }

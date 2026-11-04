@@ -83,16 +83,6 @@ public final class Chase
 		return walk(grid, m, x, y, tx, ty, null);
 	}
 
-	/**
-	 * Plays the walk out like {@link #run} and also records it: the south-west tile the creature
-	 * stands on at each tick, the tile it spawned on first. Used to rehearse a wave before it
-	 * spawns.
-	 */
-	public static Chase trace(Grid grid, Monster m, int x, int y, int tx, int ty, java.util.List<int[]> path)
-	{
-		return walk(grid, m, x, y, tx, ty, path);
-	}
-
 	private static Chase walk(Grid grid, Monster m, int x, int y, int tx, int ty, java.util.List<int[]> path)
 	{
 		int size = m.getSize();

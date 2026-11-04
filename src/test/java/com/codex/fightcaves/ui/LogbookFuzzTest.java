@@ -132,7 +132,7 @@ public class LogbookFuzzTest
 			Splits.versusPb(copy.runs, Math.max(0, wave - 1), copy.active.waveStartTick, copy.active.partial);
 			Splits.forecast(copy.runs, wave, copy.active.ticks, copy.active.ticks - copy.active.waveStartTick);
 		}
-		panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, null, null, 70, 70, pacer.learned(),
+		panel.update(new View(View.State.OUTSIDE, 0, 0, null, 0, false, 0, null, 70, 70, pacer.learned(),
 			full.getDosesNeeded(), 0, null, copy));
 		for (int tab = 0; tab < 3; tab++)
 		{
@@ -140,8 +140,8 @@ public class LogbookFuzzTest
 		}
 		int rotation = copy.active == null ? 0 : copy.active.rotation;
 		PrayerPacer.Pace pace = wave > 0 ? pacer.pace(wave, 50, 70, 10, 4, 4) : null;
-		panel.update(new View(View.State.IN_CAVE, wave, rotation, null, 0, false, 1, null, null, pace, 50, 70, pacer.learned(),
-			0, copy.active == null ? 0 : copy.active.ticks, null, copy).withOutlook(copy.outlooks.get(rotation + ":0"), null));
+		panel.update(new View(View.State.IN_CAVE, wave, rotation, null, 0, false, 1, pace, 50, 70, pacer.learned(),
+			0, copy.active == null ? 0 : copy.active.ticks, null, copy));
 		for (int tab = 0; tab < 3; tab++)
 		{
 			panel.showTab(tab);

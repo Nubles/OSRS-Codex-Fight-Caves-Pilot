@@ -22,5 +22,4 @@ login
 
 watch figure plaque.shown.figure
 watch note plaque.shown.note
-watch call plaque.shown.call
-watch danger plaque.shown.danger
+watch ghost plaque.shown.ghost

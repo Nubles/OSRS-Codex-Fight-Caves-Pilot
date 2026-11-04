@@ -94,7 +94,7 @@ public enum Monster
 		return range;
 	}
 
-	/** How much it matters to keep it off you, used to weigh where to stand. */
+	/** How much of a threat it is, relative to the others. */
 	public int getThreat()
 	{
 		return threat;

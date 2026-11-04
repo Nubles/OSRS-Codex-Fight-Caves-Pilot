@@ -10,81 +10,34 @@ import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
-/** The prayer call, the kill order, weapon ranges and the spawn tiles. */
+/** What could reach you (for the fall review), weapon ranges and the spawn tiles. */
 public class FightTest
 {
 	private static final Grid FLOOR = ChaseTest.pillarFloor();
 
 	@Test
-	public void magerInSightCallsForMagic()
+	public void magerAndRangerInSightAreBothThreats()
 	{
-		PrayerCall call = PrayerCall.of(FLOOR, Arrays.asList(
-			new StandPlanner.Foe(Monster.KET_ZEK, 4, 20),
-			new StandPlanner.Foe(Monster.TOK_XIL, 20, 20)), 10, 22);
-		assertEquals(Protect.MAGIC, call.getPrayer());
-		assertEquals(Protect.MISSILES, call.getAlso());
+		// What the fall review reads after a run: who could reach you, and with what.
+		List<Threat> t = Threat.of(FLOOR, Arrays.asList(new Foe(Monster.KET_ZEK, 4, 20), new Foe(Monster.TOK_XIL, 20, 20)), 10, 22);
+		assertEquals(2, t.size());
+		assertTrue(t.stream().anyMatch(x -> x.getStyle() == Protect.MAGIC));
+		assertTrue(t.stream().anyMatch(x -> x.getStyle() == Protect.MISSILES));
 	}
 
 	@Test
 	public void magerBesideYouHitsWithMelee()
 	{
 		// The mager's body covers 4..8 on both axes; you stand just east of it.
-		PrayerCall call = PrayerCall.of(FLOOR, Collections.singletonList(new StandPlanner.Foe(Monster.KET_ZEK, 4, 4)), 9, 6);
-		assertEquals(Protect.MELEE, call.getPrayer());
+		List<Threat> t = Threat.of(FLOOR, Collections.singletonList(new Foe(Monster.KET_ZEK, 4, 4)), 9, 6);
+		assertEquals(Protect.MELEE, t.get(0).getStyle());
 	}
 
 	@Test
-	public void nothingNearMeansNoCall()
+	public void nothingNearAndJadAreNoThreats()
 	{
-		assertNull(PrayerCall.of(FLOOR, Collections.singletonList(new StandPlanner.Foe(Monster.TZ_KIH, 2, 2)), 25, 25));
-		assertNull(PrayerCall.of(FLOOR, Collections.singletonList(new StandPlanner.Foe(Monster.TZTOK_JAD, 4, 20)), 10, 22));
-	}
-
-	@Test
-	public void unprayedRangerDiesBeforePrayedMager()
-	{
-		List<StandPlanner.Foe> foes = Arrays.asList(
-			new StandPlanner.Foe(Monster.KET_ZEK, 4, 20),
-			new StandPlanner.Foe(Monster.TOK_XIL, 20, 20));
-		List<KillOrder.Target> order = KillOrder.rank(FLOOR, foes, 10, 22, 7, Protect.MAGIC);
-		assertEquals(Monster.TOK_XIL, order.get(0).getFoe().getMonster());
-		assertEquals(KillOrder.Reason.UNPRAYED, order.get(0).getReason());
-		assertEquals(KillOrder.Reason.PRAYED, order.get(1).getReason());
-	}
-
-	@Test
-	public void healerGoesFirstOnceOthersAreHurt()
-	{
-		List<StandPlanner.Foe> foes = Arrays.asList(
-			new StandPlanner.Foe(Monster.KET_ZEK, 3, 20, 0.4, null),
-			new StandPlanner.Foe(Monster.YT_MEJKOT, 8, 20, 1, null));
-		List<KillOrder.Target> order = KillOrder.rank(FLOOR, foes, 12, 22, 7, Protect.MAGIC);
-		assertEquals(Monster.YT_MEJKOT, order.get(0).getFoe().getMonster());
-		assertEquals(KillOrder.Reason.HEALS, order.get(0).getReason());
-	}
-
-	@Test
-	public void stuckInReachComesAfterThoseOnYou()
-	{
-		// A bat on you, and a mager stuck west of the pillar while you stand east of it.
-		List<StandPlanner.Foe> foes = Arrays.asList(
-			new StandPlanner.Foe(Monster.KET_ZEK, 4, 13),
-			new StandPlanner.Foe(Monster.TZ_KIH, 18, 14));
-		List<KillOrder.Target> order = KillOrder.rank(FLOOR, foes, 17, 14, 7, null);
-		assertEquals(Monster.TZ_KIH, order.get(0).getFoe().getMonster());
-		assertEquals(KillOrder.Reason.DRAINS, order.get(0).getReason());
-		assertEquals(KillOrder.Reason.OUT_OF_REACH, order.get(1).getReason());
-	}
-
-	@Test
-	public void standingWhereTwoStylesHitCostsMore()
-	{
-		List<StandPlanner.Foe> foes = Arrays.asList(
-			new StandPlanner.Foe(Monster.YT_MEJKOT, 4, 4),
-			new StandPlanner.Foe(Monster.KET_ZEK, 20, 4));
-		double one = StandPlanner.score(FLOOR, foes.subList(0, 1), 9, 6, 0, 7).getCost()
-			+ StandPlanner.score(FLOOR, foes.subList(1, 2), 9, 6, 0, 7).getCost();
-		assertTrue(StandPlanner.score(FLOOR, foes, 9, 6, 0, 7).getCost() > one);
+		assertTrue(Threat.of(FLOOR, Collections.singletonList(new Foe(Monster.TZ_KIH, 2, 2)), 25, 25).isEmpty());
+		assertTrue(Threat.of(FLOOR, Collections.singletonList(new Foe(Monster.TZTOK_JAD, 4, 20)), 10, 22).isEmpty());
 	}
 
 	@Test

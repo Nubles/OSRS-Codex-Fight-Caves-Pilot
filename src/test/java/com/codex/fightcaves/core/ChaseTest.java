@@ -57,27 +57,6 @@ public class ChaseTest
 	}
 
 	@Test
-	public void plannerPicksThePillar()
-	{
-		Grid g = pillarFloor();
-		StandPlanner.Spot spot = StandPlanner.plan(g,
-			Collections.singletonList(new StandPlanner.Foe(Monster.KET_ZEK, 4, 13)), 20, 6, 7);
-		assertNotNull(spot);
-		assertTrue(spot.safeFromRange());
-	}
-
-	@Test
-	public void scoreNamesEveryFoe()
-	{
-		Grid g = pillarFloor();
-		StandPlanner.Spot spot = StandPlanner.score(g, Arrays.asList(
-			new StandPlanner.Foe(Monster.TZ_KIH, 3, 3),
-			new StandPlanner.Foe(Monster.KET_ZEK, 4, 20)), 10, 22, 0, 7);
-		assertEquals(Monster.KET_ZEK, spot.getOutcomes().get(0).getFoe().getMonster());
-		assertEquals(2, spot.getOutcomes().size());
-	}
-
-	@Test
 	public void onlyTheSidesFacingYouCanSee()
 	{
 		// A 3 by 3 creature north-west of you: only its top-middle tile, on the far side of

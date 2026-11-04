@@ -4,7 +4,6 @@ import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.Damage;
 import com.codex.fightcaves.core.Form;
 import com.codex.fightcaves.core.Logbook;
-import com.codex.fightcaves.core.Outlook;
 import com.codex.fightcaves.core.Placement;
 import com.codex.fightcaves.core.PrayerPacer;
 import com.codex.fightcaves.core.Ready;
@@ -20,6 +19,7 @@ import java.awt.GridLayout;
 import java.util.Collections;
 import java.util.List;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
@@ -27,9 +27,11 @@ import javax.swing.border.EmptyBorder;
 import net.runelite.client.ui.PluginPanel;
 
 /**
- * The pilot's side panel: the crest, then three pages. Pilot is the run in progress: the cave
- * chart, where to stand and why, prayer against the waves left and what comes next. Waves is
- * every wave of every rotation, to study before going in. Records is how your runs have gone.
+ * The pilot's side panel: the crest, then three pages. Pilot is the run in progress: the
+ * rotation, the run against its ghost, the supplies each wave took, prayer against the waves left
+ * and what comes next. Waves is every wave of every rotation, to study before going in. Records is
+ * how your runs have gone, with the report on each against its ghost. Nothing on it says how to
+ * fight: no tile, no prayer to use, no attack timing.
  */
 public class PilotPanel extends PluginPanel
 {
@@ -51,8 +53,6 @@ public class PilotPanel extends PluginPanel
 	private int studyRotation = 1;
 	private int studyWave = 1;
 	private boolean studyTouched;
-	/** Kept across rebuilds so the rehearsal plays on instead of restarting each time the panel redraws. */
-	private final RehearsalChart rehearsalChart = new RehearsalChart(196);
 	/** The run whose splits the Records page sets against your best cape, by when it ended; 0 for the latest. */
 	private long comparedRun;
 	/** Whether the panel is open in the sidebar; the plugin skips rebuilding it while it is not. */
@@ -170,12 +170,6 @@ public class PilotPanel extends PluginPanel
 		studyWave = wave;
 		studyTouched = true;
 		rebuildWaves();
-	}
-
-	/** Holds the rehearsal on one moment, in ticks, for previews and tests. */
-	public void freezeRehearsal(double tick)
-	{
-		rehearsalChart.freeze(tick);
 	}
 
 	private void updateCrest()
@@ -306,7 +300,7 @@ public class PilotPanel extends PluginPanel
 		StackPanel stack = new StackPanel(8, 8);
 		if (view.state == View.State.LOGGED_OUT)
 		{
-			stack.add(note("The cave is dark", "Log in and Codex Fight Caves Pilot reads your rotation from the first spawns, marks where to stand each wave and paces your prayer against the waves left."));
+			stack.add(note("The cave is dark", "Log in and Codex Fight Caves Pilot reads your rotation from the first spawns, races your best run wave by wave and counts what each wave costs you."));
 			replace(pilot, stack);
 			return;
 		}
@@ -324,103 +318,13 @@ public class PilotPanel extends PluginPanel
 		}
 
 		int wave = Math.max(1, view.wave);
-		boolean next = view.stand != null && view.stand.next;
-		int shown = next ? Math.min(Waves.LAST, wave + 1) : wave;
-		List<Placement> bright = view.rotation > 0 ? view.placements(view.rotation, shown) : view.observed;
-		List<Placement> faint = Collections.emptyList();
-		if (view.rotation > 0)
-		{
-			faint = next ? view.placements(view.rotation, wave) : view.placements(view.rotation, Math.min(Waves.LAST, wave + 1));
-			if (shown == Waves.LAST && !next)
-			{
-				faint = Collections.emptyList();
-			}
-		}
-		if (view.rehearsal != null && view.floor != null)
-		{
-			// The next wave played out on the real floor before it spawns.
-			rehearsalChart.show("REHEARSING WAVE " + Math.min(Waves.LAST, wave + 1), view.floor, view.rehearsal, view.youTile);
-			stack.add(rehearsalChart);
-			stack.add(Ui.wrapped(view.rehearsal.headline(), Theme.small(),
-				view.rehearsal.firstHit() < 0 ? Theme.TEAL : Theme.TEXT_MUTED, WIDTH - 16));
-		}
-		else
-		{
-			CaveChart chart = new CaveChart(170);
-			String caption = view.wave == 0 ? "WAITING FOR WAVE 1" : next ? "NEXT  WAVE " + shown : "WAVE " + shown;
-			chart.show(caption, view.rotation > 0 ? "ROTATION " + view.rotation : "ROTATION ?", bright, faint,
-				view.stand == null ? null : new double[]{view.stand.fx, view.stand.fy}, next, view.you);
-			stack.add(chart);
-		}
-
 		stack.add(rotationCard());
 
-		if (view.stand != null)
+		if (view.wave > 1)
 		{
-			stack.add(new SectionHeader("Where to stand", next ? "for wave " + shown : "now"));
-			Card card = new Card(new BorderLayout(0, 4));
-			StackPanel rows = new StackPanel(2, 0);
-			if (view.compare != null)
-			{
-				// Where you are against the gilt tile, creature by creature.
-				rows.add(new CompareRow(null));
-				for (com.codex.fightcaves.core.Compare.Row r : view.compare.getRows())
-				{
-					rows.add(new CompareRow(r));
-				}
-			}
-			else
-			{
-				for (View.Fate f : view.stand.fates)
-				{
-					rows.add(new FateRow(f));
-				}
-			}
-			card.add(rows, BorderLayout.CENTER);
-			String foot = view.stand.safe ? "Every ranger and mager is stuck from here" : "The gilt tile is the safest within reach";
-			if (view.stand.steps > 0)
-			{
-				foot += ", " + view.stand.steps + (view.stand.steps == 1 ? " step away" : " steps away");
-			}
-			StackPanel foots = new StackPanel(3, 0);
-			if (view.compare != null)
-			{
-				String why = next ? "When wave " + shown + " spawns: " + lowerFirst(view.compare.getHeadline()) : view.compare.getHeadline();
-				foots.add(Ui.wrapped(why, Theme.small(), Theme.mix(Theme.TEXT_MUTED, Theme.EMBER, 0.35), WIDTH - 40));
-			}
-			foots.add(Ui.wrapped(foot + ".", Theme.small(), view.stand.safe ? Theme.TEAL : Theme.TEXT_FAINT, WIDTH - 40));
-			card.add(foots, BorderLayout.SOUTH);
-			card.accent(view.stand.safe ? Theme.TEAL : Theme.GOLD);
-			stack.add(card);
+			buildGhost(stack, wave);
 		}
-
-		if (view.call != null || !view.kills.isEmpty() || view.danger > 0)
-		{
-			stack.add(new SectionHeader("The fight", "from where you stand"));
-			Card card = new Card(new BorderLayout(0, 6));
-			StackPanel top = new StackPanel(4, 0);
-			if (view.danger > 0)
-			{
-				top.add(dangerBlock(view.danger));
-			}
-			if (view.call != null)
-			{
-				top.add(callBlock(view.call));
-			}
-			card.add(top, BorderLayout.NORTH);
-			if (!view.kills.isEmpty())
-			{
-				StackPanel rows = new StackPanel(2, 0);
-				rows.add(Ui.label("KILL ORDER", Theme.small(), Theme.GOLD_DIM));
-				for (int i = 0; i < view.kills.size(); i++)
-				{
-					rows.add(new KillRow(i + 1, view.kills.get(i)));
-				}
-				card.add(rows, BorderLayout.CENTER);
-			}
-			card.accent(view.danger > 0 ? Theme.BLOOD : view.call != null ? Theme.of(view.call.prayer) : Theme.GOLD);
-			stack.add(card);
-		}
+		buildSupplies(stack, wave);
 
 		if (view.pace != null)
 		{
@@ -437,10 +341,19 @@ public class PilotPanel extends PluginPanel
 		{
 			stack.add(new SectionHeader("Coming up", Format.waves(Waves.JAD - wave) + " to Jad"));
 			Card card = new Card(new BorderLayout());
+			// What each wave holds, as any rotation table says; where it spawns is left to the Waves
+			// page, so nothing during a run points at a spot on the floor.
 			StackPanel rows = new StackPanel(2, 0);
 			for (int w = wave; w <= Math.min(Waves.LAST, wave + AHEAD - 1); w++)
 			{
-				rows.add(new WaveRow(w, view.placements(view.rotation, w), w == wave ? WaveRow.Mark.NOW : w == wave + 1 ? WaveRow.Mark.NEXT : WaveRow.Mark.NONE, null));
+				JPanel row = new JPanel(new BorderLayout(6, 0));
+				row.setOpaque(false);
+				java.awt.Color tone = w == wave ? Theme.GOLD_BRIGHT : Theme.TEXT_MUTED;
+				JLabel number = Ui.label(String.valueOf(w), Theme.small(), w == wave ? Theme.GOLD_BRIGHT : Theme.GOLD_DIM);
+				number.setPreferredSize(new java.awt.Dimension(18, number.getPreferredSize().height));
+				row.add(number, BorderLayout.WEST);
+				row.add(Ui.label(w == Waves.JAD ? "TzTok-Jad" : Waves.describe(w), Theme.small(), tone), BorderLayout.CENTER);
+				rows.add(row);
 			}
 			card.add(rows, BorderLayout.CENTER);
 			if (view.jadAt != null)
@@ -451,114 +364,98 @@ public class PilotPanel extends PluginPanel
 			stack.add(card);
 		}
 
-		if (view.rotation > 0 && view.outlook != null && wave < Waves.JAD)
-		{
-			buildRoad(stack, wave);
-		}
-
-		if (!view.recentSplits.isEmpty())
-		{
-			boolean racing = view.recentSplits.get(0)[2] != Integer.MIN_VALUE;
-			stack.add(new SectionHeader("Splits", racing ? "against your best cape" : "this run"));
-			Card card = new Card(new BorderLayout());
-			StackPanel rows = new StackPanel(1, 0);
-			rows.add(racing ? SplitRow.header("", "TIME", "CAPE", "") : SplitRow.header("", "TIME"));
-			for (int[] split : view.recentSplits)
-			{
-				String label = "Wave " + split[0];
-				if (racing)
-				{
-					rows.add(new SplitRow(label, new String[]{Format.ticks(split[1]), Format.ticks(split[1] - split[2])}, split[2], Theme.TEXT));
-				}
-				else
-				{
-					rows.add(SplitRow.plain(label, Theme.TEXT, Format.ticks(split[1])));
-				}
-			}
-			card.add(rows, BorderLayout.CENTER);
-			stack.add(card);
-		}
-
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
-		String vs = view.partial ? "picked up part way" : view.versusBest == null ? "no cape yet" : Format.delta(view.versusBest) + " vs best";
+		String vs = view.partial ? "picked up part way" : view.versusBest == null ? "no ghost yet" : Format.delta(view.versusBest) + " on ghost";
 		tiles.add(new StatTile(Format.ticks(view.runTicks), "Run time", vs,
 			view.versusBest == null ? Theme.GOLD : view.versusBest <= 0 ? Theme.GREEN : Theme.EMBER));
-		tiles.add(new StatTile(view.prayer + "/" + view.prayerLevel, "Prayer", view.pace == null ? "" : "sip at " + view.pace.getDrinkBelow(), Theme.TEAL));
+		tiles.add(new StatTile(view.prayer + "/" + view.prayerLevel, "Prayer", view.pace == null ? "" : Format.doses(view.pace.getDoses()) + " carried", Theme.TEAL));
 		stack.add(tiles);
 		replace(pilot, stack);
 	}
 
-	/** The road to Jad: every wave of the rotation rated, and a line on the next hard one. */
-	private void buildRoad(StackPanel stack, int wave)
+	/**
+	 * The run against its ghost: where it stands at the end of the last wave cleared, the whole
+	 * run so far as a line about the ghost's, and the last few waves set against the same waves of
+	 * the ghost. Times and nothing else: it never says how to fight a wave.
+	 */
+	private void buildGhost(StackPanel stack, int wave)
 	{
-		String codes = view.outlook;
-		int splits = Outlook.counted(codes, wave, Outlook.Rating.SPLIT);
-		int prays = Outlook.counted(codes, wave, Outlook.Rating.PRAY);
-		stack.add(new SectionHeader("Road to Jad", splits + " split, " + prays + " pray ahead"));
-		Card card = new Card(new BorderLayout(0, 6));
-		card.add(new WaveGrid(codes, wave, 0, null), BorderLayout.NORTH);
-		StackPanel lines = new StackPanel(3, 0);
-		lines.add(Ui.wrapped(roadLine(codes, wave, view.outlookReason), Theme.small(),
-			splits > 0 ? Theme.mix(Theme.TEXT_MUTED, Theme.EMBER, 0.35) : Theme.TEAL, WIDTH - 40));
-		lines.add(Ui.wrapped("Teal is clean: rangers and magers stick. Gold is pray: one style reaches you. Ember is split: two do.",
-			Theme.small(), Theme.TEXT_FAINT, WIDTH - 40));
-		card.add(lines, BorderLayout.CENTER);
-		card.accent(splits > 0 ? Theme.EMBER : Theme.TEAL);
+		List<com.codex.fightcaves.core.Ghost.Split> splits = view.ghostSplits;
+		if (splits.isEmpty())
+		{
+			if (!view.partial)
+			{
+				stack.add(new SectionHeader("Wave ghost"));
+				stack.add(Ui.wrapped("Your first run timed from wave 1 becomes the ghost to race; a cape takes its place once you have one.",
+					Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+			}
+			return;
+		}
+		stack.add(new SectionHeader("Wave ghost", view.ghostCape ? "your best cape" : "your furthest run"));
+		Card card = new Card(new BorderLayout(0, 4));
+		Integer behind = view.versusBest;
+		StackPanel top = new StackPanel(2, 0);
+		if (behind != null)
+		{
+			java.awt.Color tone = behind <= 0 ? Theme.GREEN : Theme.EMBER;
+			top.add(Ui.label(Format.delta(behind) + (behind <= 0 ? " ahead" : " behind"), Theme.title(), tone));
+			top.add(Ui.wrapped("Against the ghost at the end of wave " + (wave - 1) + ".", Theme.small(), Theme.TEXT_MUTED, WIDTH - 40));
+		}
+		else
+		{
+			top.add(Ui.label("Racing the ghost", Theme.title(), Theme.GOLD));
+			top.add(Ui.wrapped(view.partial ? "This run was picked up part way, so its clock is not set against the ghost; each wave still is."
+				: "The ghost fell before this wave, so only your own clock runs from here.", Theme.small(), Theme.TEXT_MUTED, WIDTH - 40));
+		}
+		card.add(top, BorderLayout.NORTH);
+		card.add(new GhostChart(splits, null, 58), BorderLayout.CENTER);
+		StackPanel rows = new StackPanel(1, 0);
+		rows.add(SplitRow.header("", "TIME", "GHOST", ""));
+		for (int i = splits.size() - 1; i >= 0 && i >= splits.size() - 3; i--)
+		{
+			com.codex.fightcaves.core.Ghost.Split sp = splits.get(i);
+			rows.add(new SplitRow("Wave " + sp.wave, new String[]{sp.ticks > 0 ? Format.ticks(sp.ticks) : null,
+				sp.ghostTicks > 0 ? Format.ticks(sp.ghostTicks) : null}, sp.lost(), Theme.TEXT));
+		}
+		card.add(rows, BorderLayout.SOUTH);
+		card.accent(behind == null ? Theme.GOLD : behind <= 0 ? Theme.GREEN : Theme.EMBER);
 		stack.add(card);
 	}
 
-	/** "Wave 46 is the next split, in 3 waves. The mager sees you..." */
-	static String roadLine(String codes, int wave, String reason)
+	/** Supplies this run and on the wave on now, beside the ghost's on the same wave. */
+	private void buildSupplies(StackPanel stack, int wave)
 	{
-		int next = Outlook.nextAtLeast(codes, wave, Outlook.Rating.SPLIT);
-		if (next == 0)
+		stack.add(new SectionHeader("Supplies", "this run"));
+		Card card = new Card(new BorderLayout(0, 2));
+		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
+		tiles.setOpaque(false);
+		tiles.add(new StatTile(Format.count(view.runDoses), view.runDoses == 1 ? "Dose" : "Doses", "drunk this run", Theme.TEAL));
+		tiles.add(new StatTile(Format.count(view.runFood), "Food", "eaten this run", Theme.GOLD));
+		card.add(tiles, BorderLayout.NORTH);
+		String line = "Wave " + wave + ": " + supplies(view.waveDoses, view.waveFood);
+		if (view.ghostWaveDoses >= 0)
 		{
-			int pray = Outlook.nextAtLeast(codes, wave, Outlook.Rating.PRAY);
-			if (pray == 0)
-			{
-				return codes != null && codes.indexOf(Outlook.UNKNOWN) >= 0 && codes.indexOf(Outlook.UNKNOWN) < Waves.JAD - 1
-					? "Rating the waves ahead." : "Every wave left before Jad is clean.";
-			}
-			return "No split wave left before Jad. Next to pray through: wave " + pray + "." + (reason == null ? "" : " " + reason);
+			line += "; the ghost used " + supplies(view.ghostWaveDoses, view.ghostWaveFood) + " on it.";
 		}
-		int in = next - wave;
-		String when = in == 1 ? "the next wave" : "in " + in + " waves";
-		return "Wave " + next + " is the next split, " + when + "." + (reason == null ? " No tile in reach keeps both styles off you." : " " + reason);
+		else
+		{
+			line += ".";
+		}
+		card.add(Ui.wrapped(line, Theme.small(), Theme.TEXT_MUTED, WIDTH - 40), BorderLayout.CENTER);
+		stack.add(card);
 	}
 
-	/** The protection prayer to use: its name in the colour of what it answers, and whether it is on. */
-	/** "Eat now": what could land at once past your prayer is enough to finish you. */
-	private static JComponent dangerBlock(int danger)
+	/** "2 doses and 1 food", "nothing". */
+	static String supplies(int doses, int food)
 	{
-		StackPanel block = new StackPanel(1, 0);
-		block.add(Ui.label("EAT NOW", Theme.title(), Theme.BLOOD));
-		block.add(Ui.wrapped("Up to " + danger + " can land at once past your prayer, enough to finish you.", Theme.small(), Theme.TEXT_MUTED, WIDTH - 40));
-		return block;
-	}
-
-	private static JComponent callBlock(View.Call call)
-	{
-		JPanel block = new JPanel(new BorderLayout(0, 1));
-		block.setOpaque(false);
-		java.awt.Color color = Theme.of(call.prayer);
-		block.add(Ui.label(call.prayer.getName(), Theme.title(), color), BorderLayout.NORTH);
-		List<String> names = new java.util.ArrayList<>();
-		for (com.codex.fightcaves.core.Monster m : call.answered)
+		if (doses == 0 && food == 0)
 		{
-			String name = m.getNickname().toLowerCase();
-			if (!names.contains(name))
-			{
-				names.add(name);
-			}
+			return "nothing";
 		}
-		String text = (call.up ? "On. " : "Switch to it. ") + "Blocks the " + String.join(" and the ", names) + ".";
-		if (call.also != null)
-		{
-			text += " " + call.also.getShortName() + " is hitting too: step to the gilt tile to lose it.";
-		}
-		block.add(Ui.wrapped(text, Theme.small(), call.up ? Theme.TEXT_MUTED : Theme.mix(Theme.TEXT_MUTED, color, 0.5), WIDTH - 40), BorderLayout.CENTER);
-		return block;
+		String d = doses == 0 ? null : Format.doses(doses);
+		String f = food == 0 ? null : Format.count(food) + " food";
+		return d == null ? f : f == null ? d : d + " and " + f;
 	}
 
 	private Card rotationCard()
@@ -649,7 +546,7 @@ public class PilotPanel extends PluginPanel
 	private void buildBriefing(StackPanel stack)
 	{
 		Logbook b = view.book;
-		stack.add(note("At the cave mouth", "Step in and the pilot takes over: it reads your rotation from the first spawns, gilds the tile where rangers and magers cannot see you, and paces your prayer against the waves left."));
+		stack.add(note("At the cave mouth", "Step in and the pilot reads your rotation from the first spawns, races your best run's ghost wave by wave and counts the doses and food each wave takes. The fighting is yours."));
 		JPanel tiles = new JPanel(new GridLayout(1, 2, 6, 0));
 		tiles.setOpaque(false);
 		tiles.add(new StatTile(view.fullRunDoses > 0 ? String.valueOf(view.fullRunDoses) : "-", "Doses a run", view.paceLearned ? "at your rate" : "a first guess", Theme.TEAL));
@@ -679,6 +576,11 @@ public class PilotPanel extends PluginPanel
 			if (last.fall != null)
 			{
 				stack.add(fallCard(last));
+			}
+			Card report = reportCard(b, last);
+			if (report != null)
+			{
+				stack.add(report);
 			}
 		}
 		stack.add(new SectionHeader("How it reads the cave"));
@@ -823,25 +725,10 @@ public class PilotPanel extends PluginPanel
 			stack.add(Ui.wrapped(recordLine(RotationRecord.of(view.book.runs, studyRotation)), Theme.small(), Theme.GOLD_DIM, WIDTH - 16));
 		}
 
-		String codes = studyRotation == view.rotation && view.outlook != null ? view.outlook
-			: Outlook.saved(view.book.outlooks, studyRotation, 0);
-		int now = view.state == View.State.IN_CAVE && studyRotation == view.rotation ? view.wave : 0;
-		stack.add(new SectionHeader("Road to Jad", "click to chart"));
-		stack.add(new WaveGrid(codes, now, studyWave, w ->
-		{
-			studyWave = w;
-			studyTouched = true;
-			rebuildWaves();
-		}));
-		if (codes == null)
-		{
-			stack.add(Ui.wrapped("Each wave is rated once you have fought this rotation with the road to Jad on.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
-		}
-
 		CaveChart chart = new CaveChart(160);
 		int nextWave = Math.min(Waves.LAST, studyWave + 1);
 		chart.show("WAVE " + studyWave, "ROTATION " + studyRotation, view.placements(studyRotation, studyWave),
-			studyWave < Waves.LAST ? view.placements(studyRotation, nextWave) : null, null, false, null);
+			studyWave < Waves.LAST ? view.placements(studyRotation, nextWave) : null);
 		stack.add(chart);
 		stack.add(Ui.wrapped(Waves.describe(studyWave) + (studyWave < Waves.LAST ? ". Wave " + nextWave + " is outlined." : "."),
 			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
@@ -916,6 +803,12 @@ public class PilotPanel extends PluginPanel
 			stack.add(new SectionHeader("The run", latest ? "latest" : "picked below"));
 			stack.add(new RunScroll(RunStory.of(b, run)));
 			buildFall(stack, b);
+			Card report = reportCard(b, run);
+			if (report != null)
+			{
+				stack.add(new SectionHeader("Run report", "against its ghost"));
+				stack.add(report);
+			}
 			buildSplits(stack, b);
 			buildHurt(stack, b);
 		}
@@ -1088,5 +981,83 @@ public class PilotPanel extends PluginPanel
 			note += " Most to win back in waves " + most.label() + " (" + Format.ticks(most.toGain()) + ").";
 		}
 		return note;
+	}
+
+	/**
+	 * The report on a run against its ghost (your best run other than it): the run as a line about
+	 * the ghost's, the waves where it lost the most time and the most supplies, and the totals.
+	 * Null when there is no ghost to set it against or the run cleared no wave the ghost did.
+	 */
+	static Card reportCard(Logbook b, Logbook.Run run)
+	{
+		com.codex.fightcaves.core.Ghost ghost = com.codex.fightcaves.core.Ghost.of(b.runs, run);
+		if (ghost == null || run == null)
+		{
+			return null;
+		}
+		com.codex.fightcaves.core.Ghost.Report r = ghost.report(run);
+		if (r.getThrough() == 0)
+		{
+			return null;
+		}
+		Card card = new Card(new BorderLayout(0, 4));
+		StackPanel top = new StackPanel(2, 0);
+		Integer behind = r.getBehind();
+		java.awt.Color tone = behind == null ? Theme.GOLD : behind <= 0 ? Theme.GREEN : Theme.EMBER;
+		String through = r.getThrough() == Waves.JAD ? "Jad" : "wave " + r.getThrough();
+		top.add(Ui.label(behind == null ? "Against the ghost" : Format.delta(behind) + (behind <= 0 ? " ahead" : " behind"), Theme.title(), tone));
+		top.add(Ui.wrapped((behind == null ? "Wave by wave against " : "On the clock at " + through + ", against ")
+			+ (ghost.isCape() ? "your best cape" : "your furthest run") + ".", Theme.small(), Theme.TEXT_MUTED, WIDTH - 40));
+		card.add(top, BorderLayout.NORTH);
+		card.add(new GhostChart(r.getSplits(), r.getSlowest(), 64), BorderLayout.CENTER);
+		StackPanel lines = new StackPanel(3, 0);
+		lines.add(Ui.wrapped(slowLine(r.getSlowest()), Theme.small(), r.getSlowest().isEmpty() ? Theme.GREEN : Theme.mix(Theme.TEXT, Theme.EMBER, 0.4), WIDTH - 40));
+		lines.add(Ui.wrapped(hungryLine(r.getHungriest()), Theme.small(), r.getHungriest().isEmpty() ? Theme.GREEN : Theme.TEXT_MUTED, WIDTH - 40));
+		lines.add(Ui.wrapped("Through " + through + ": " + supplies(r.getDoses(), r.getFood()) + " used, the ghost "
+			+ supplies(r.getGhostDoses(), r.getGhostFood()) + ".", Theme.small(), Theme.TEXT_FAINT, WIDTH - 40));
+		card.add(lines, BorderLayout.SOUTH);
+		card.accent(tone);
+		return card;
+	}
+
+	/** "Most time lost: wave 46 (+0:38), wave 52 (+0:21) and wave 38 (+0:12)." */
+	static String slowLine(List<com.codex.fightcaves.core.Ghost.Split> slow)
+	{
+		if (slow.isEmpty())
+		{
+			return "No wave slower than the ghost's.";
+		}
+		List<String> parts = new java.util.ArrayList<>();
+		for (com.codex.fightcaves.core.Ghost.Split s : slow)
+		{
+			parts.add("wave " + s.wave + " (" + Format.delta(s.lost()) + ")");
+		}
+		return "Most time lost: " + list(parts) + ".";
+	}
+
+	/** "Most supplies: wave 61 (3 doses and 1 food, the ghost 1 dose), wave 52 (+2) and wave 40 (+1)." */
+	static String hungryLine(List<com.codex.fightcaves.core.Ghost.Split> hungry)
+	{
+		if (hungry.isEmpty())
+		{
+			return "No wave took more supplies than the ghost's.";
+		}
+		List<String> parts = new java.util.ArrayList<>();
+		for (com.codex.fightcaves.core.Ghost.Split s : hungry)
+		{
+			// The worst in full, the rest by how far past the ghost they went.
+			parts.add(parts.isEmpty() ? "wave " + s.wave + " (" + supplies(s.doses, s.food) + ", the ghost " + supplies(s.ghostDoses, s.ghostFood) + ")"
+				: "wave " + s.wave + " (+" + s.overSupplies() + ")");
+		}
+		return "Most supplies: " + list(parts) + ".";
+	}
+
+	private static String list(List<String> parts)
+	{
+		if (parts.size() == 1)
+		{
+			return parts.get(0);
+		}
+		return String.join(", ", parts.subList(0, parts.size() - 1)) + " and " + parts.get(parts.size() - 1);
 	}
 }

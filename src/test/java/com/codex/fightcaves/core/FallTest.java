@@ -104,13 +104,11 @@ public class FallTest
 	}
 
 	@Test
-	public void dangerCountsOnlyWhatPrayerLetsThrough()
+	public void unblockedCountsOnlyWhatPrayerLetsThrough()
 	{
 		List<Threat> t = threats(Monster.KET_ZEK, Protect.MAGIC, Monster.TOK_XIL, Protect.MISSILES);
-		assertEquals(0, Threat.danger(t, Protect.MAGIC, 20));
-		assertEquals(14, Threat.danger(t, Protect.MAGIC, 13));
-		assertEquals(66, Threat.danger(t, null, 60));
-		assertEquals(0, Threat.danger(t, null, 0));
+		assertEquals(14, Threat.unblocked(t, Protect.MAGIC));
+		assertEquals(66, Threat.unblocked(t, null));
 	}
 
 	@Test
@@ -127,8 +125,8 @@ public class FallTest
 		assertEquals(4, new Threat(Monster.TZ_KIH, Protect.MELEE).getMaxHit());
 		assertEquals(55, Monster.KET_ZEK.getMaxHit());
 		assertEquals(14, Monster.TOK_XIL.getMaxHit());
-		// A mager beside you at 54 hitpoints can finish you even with Magic up.
-		assertEquals(55, Threat.danger(threats(Monster.KET_ZEK, Protect.MELEE), Protect.MAGIC, 54));
+		// A mager beside you hits with melee, which Magic does not block.
+		assertEquals(55, Threat.unblocked(threats(Monster.KET_ZEK, Protect.MELEE), Protect.MAGIC));
 	}
 
 	@Test
