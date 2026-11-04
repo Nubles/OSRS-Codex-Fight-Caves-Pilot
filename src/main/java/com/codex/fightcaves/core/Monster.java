@@ -8,10 +8,10 @@ public enum Monster
 {
 	TZ_KIH("Tz-Kih", "Bat", 22, 1, 10, Style.MELEE, 1, 1, 4),
 	TZ_KEK("Tz-Kek", "Blob", 45, 2, 20, Style.MELEE, 1, 2, 7),
-	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 10, 4, 14, 13),
+	TOK_XIL("Tok-Xil", "Ranger", 90, 3, 40, Style.RANGED, 15, 4, 14, 13),
 	YT_MEJKOT("Yt-MejKot", "Melee", 180, 4, 80, Style.MELEE, 1, 5, 25),
-	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 10, 9, 52, 55),
-	TZTOK_JAD("TzTok-Jad", "Jad", 702, 5, 250, Style.MIXED, 10, 12, 97);
+	KET_ZEK("Ket-Zek", "Mager", 360, 5, 160, Style.MAGIC, 15, 9, 52, 55),
+	TZTOK_JAD("TzTok-Jad", "Jad", 702, 5, 250, Style.MIXED, 15, 12, 97);
 
 	/** How a creature fights. */
 	public enum Style
