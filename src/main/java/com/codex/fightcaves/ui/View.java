@@ -79,6 +79,35 @@ public final class View
 	/** In the cave: whether the spawns bore the clock out, or null until they settle. */
 	Boolean clockHit;
 
+	/** The Inferno and Colosseum logs (a copy), or null when they are off or not loaded. */
+	com.codex.fightcaves.arena.ArenaLog arenas;
+	/** The arena you stand in, or null. */
+	com.codex.fightcaves.arena.Arena arenaHere;
+	/** True while a wave is on where you stand: then only a plain clock shows. */
+	boolean arenaInWave;
+	/** Colosseum waves cleared while you stand between waves, or 0. */
+	int arenaBetween;
+	/** Whether the take-or-go-on estimate is on. */
+	boolean lootNote;
+
+	/** Adds the arena logs and where you stand in them. */
+	public View withArenas(com.codex.fightcaves.arena.ArenaLog log, com.codex.fightcaves.arena.Arena here, boolean inWave, int between,
+		boolean lootNote)
+	{
+		arenas = log;
+		arenaHere = here;
+		arenaInWave = inWave;
+		arenaBetween = between;
+		this.lootNote = lootNote;
+		return this;
+	}
+
+	/** True while an Inferno or Colosseum wave is on: every page holds only a plain clock. */
+	public boolean arenaQuiet()
+	{
+		return arenaInWave && arenas != null;
+	}
+
 	public View(State state, int wave, int rotation, List<Integer> candidates, int decidingWave, boolean clean, int alive,
 		PrayerPacer.Pace pace, int prayer, int prayerLevel, boolean paceLearned, int fullRunDoses,
 		int runTicks, Integer versusBest, Logbook book)

@@ -33,7 +33,9 @@ public class NoFightCuesTest
 			// The opt-in local record.
 			"fieldNotes",
 			// The rotation clock.
-			"rotationClock")), keys);
+			"rotationClock",
+			// Inferno and Colosseum run logs.
+			"arenaLogs", "colosseumLootNote")), keys);
 		assertEquals("codexfightcavespilot", CodexFightCavesPilotConfig.GROUP);
 	}
 

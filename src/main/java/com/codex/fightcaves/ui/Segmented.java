@@ -91,6 +91,16 @@ public class Segmented extends JComponent
 		}
 	}
 
+	private int widest(FontMetrics fm)
+	{
+		int most = 0;
+		for (String l : labels)
+		{
+			most = Math.max(most, fm.stringWidth(l));
+		}
+		return most;
+	}
+
 	private int indexAt(int x)
 	{
 		int w = Math.max(1, getWidth());
@@ -119,8 +129,18 @@ public class Segmented extends JComponent
 		g.setColor(Theme.GOLD_BRIGHT);
 		g.fillRect(Math.round(x + seg * 0.3f), h - 4, Math.round(seg * 0.4f), 1);
 
+		// The largest of the game's fonts that lets every label sit inside its own segment.
 		g.setFont(getFont());
 		FontMetrics fm = g.getFontMetrics();
+		for (java.awt.Font f : new java.awt.Font[]{getFont(), Theme.body(), Theme.small()})
+		{
+			g.setFont(f);
+			fm = g.getFontMetrics();
+			if (widest(fm) <= seg - 6)
+			{
+				break;
+			}
+		}
 		for (int i = 0; i < labels.length; i++)
 		{
 			int tx = Math.round(i * seg + (seg - fm.stringWidth(labels[i])) / 2);

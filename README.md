@@ -74,6 +74,28 @@ Settings come in a few groups. Every option except field notes is on by default.
 - **During a run:** *Pilot plaque* and *Wave ghost on the plaque*. Neither shows on the Jad wave.
 - **Planning and chat:** *Doses kept for Jad* (how many prayer doses pacing holds back for him, 4 by default) and *Notes in chat* (rotation known, prayer behind pace, why a run ended).
 - **Rotation clock:** *Rotation clock* turns the whole clock off: the plaque at the cave mouth, the panel's dial and naming the rotation before the spawns. The plaque also follows *Pilot plaque*.
+- **Inferno and Colosseum:** *Inferno and Colosseum logs* (the Arenas page) and *Take the loot or go on* (the between-waves estimate).
+
+## The Inferno and the Fortis Colosseum
+
+The **Arenas** page keeps a run log for each, per account, from the game's own wave lines. It reads; it never tells you how to fight a wave.
+
+- **Every attempt filed.** Each wave's split (in the Colosseum, the game's own wave time), how far the attempt got and how it ended: an infernal cape or Sol Heredit beaten, a death and on which wave, the Colosseum chest taken between waves, or walking out. An Inferno paused between waves stays open until you go back in, and the time away is not counted.
+- **Attempts and completions**, your furthest wave and your best run, and a chart of how far each of your last thirty attempts got against your ghost's reach.
+- **Your death rate by wave.** Of the attempts that began a wave, how many died there. A wave's rate is only said once five of your attempts have reached it, and the page always says how many runs it rests on.
+- **Ghost of your best run.** Your fastest whole run, or before your first, your furthest. The last attempt is set against it wave by wave, with the waves that lost the most time named.
+- **Colosseum chest values.** The wiki's average reward for waves 1 to 10 (it gives none for 11 and 12).
+- **Take the loot or go on?** In the Colosseum, between waves only: the wiki's averages for the chest so far and the next wave, set against your own survival of the next wave, as an estimate ("Going on pays on average if you survive wave 7 more than 61% of the time"). It says nothing until five of your attempts have reached that wave. Information only, and it can be turned off.
+
+**During a wave nothing shows.** While an Inferno or Colosseum wave is on, every page of the panel holds a plain card with the wave and the run clock, and nothing else: no ghost, no rate, no estimate, nothing in the game view. There are no prayer, spawn, tile or attack cues of any kind.
+
+<p align="center">
+  <img src="docs/screenshots/arenas-inferno.png" width="225" alt="The Arenas page for the Inferno">
+  <img src="docs/screenshots/arenas-between.png" width="225" alt="Between Colosseum waves">
+  <img src="docs/screenshots/arenas-in-wave.png" width="225" alt="During a wave: the plain clock only">
+</p>
+
+The Colosseum's wave lines ("Wave N completed! Wave duration: T") are not quoted on the wiki or in RuneLite's source; they are the ones the Fortis Colosseum plugin by LlemonDuck and Blert read, so treat the Colosseum splits as unconfirmed until seen in game.
 
 ## Works with other Codex plugins
 

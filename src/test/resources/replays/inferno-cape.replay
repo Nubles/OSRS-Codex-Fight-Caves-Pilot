@@ -1,0 +1,28 @@
+# An Inferno attempt that ends with TzKal-Zuk: "Your TzKal-Zuk kill count is: N." and
+# "Duration: T (new personal best)", as RuneLite's ChatCommandsPluginTest writes them (testZukNewPb).
+# The plugin was turned on part way, so the run is filed but is not a record. Wave 69 is Zuk's:
+# "On the 69th and final wave, TzKal-Zuk will break free from the northern wall."
+# (oldschool.runescape.wiki/w/The_Inferno)
+include /replays/scenes/inferno.scene
+tick 1
+chat GAMEMESSAGE "<col=ef1020>Wave: 68</col>"
+tick 4
+chat GAMEMESSAGE "<col=ef1020>Wave: 69</col>"
+tick 20
+chat GAMEMESSAGE "Your TzKal-Zuk kill count is: <col=ff0000>2</col>."
+chat GAMEMESSAGE "Duration: <col=ff0000>104:31</col> (new personal best)"
+watch result arenas.log.inferno.runs.0.result
+watch partial arenas.log.inferno.runs.0.partial
+watch gameTicks arenas.log.inferno.runs.0.gameTicks
+tick 1
+expect open = null
+expect result = "COMPLETE"
+expect partial = "true"
+# 104:31 is 6,271 seconds: 10,452 ticks of 0.6 seconds.
+expect gameTicks = "10452"
+
+# Teleported out without dying: nothing more is filed.
+scene 2420 5110
+at 2460 5150
+tick 6
+expect infernoRuns = "1"

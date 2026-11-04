@@ -81,6 +81,33 @@ public interface CodexFightCavesPilotConfig extends Config
 		return true;
 	}
 
+	@ConfigSection(name = "Inferno and Colosseum", description = "Run logs for the Inferno and the Fortis Colosseum, kept on the Arenas page; nothing shows during a wave", position = 3)
+	String ARENAS = "arenas";
+
+	@ConfigItem(
+		keyName = "arenaLogs",
+		name = "Inferno and Colosseum logs",
+		description = "Log every Inferno and Fortis Colosseum attempt from the game's own wave lines: splits, how far it got, your death rate by wave and the ghost of your best run. Shown on the Arenas page, never during a wave",
+		section = ARENAS,
+		position = 0
+	)
+	default boolean arenaLogs()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "colosseumLootNote",
+		name = "Take the loot or go on",
+		description = "Between Colosseum waves only: set the wiki's average chest value against your own death rate on the next wave, as an estimate. Said only once enough of your runs reached that wave",
+		section = ARENAS,
+		position = 1
+	)
+	default boolean colosseumLootNote()
+	{
+		return true;
+	}
+
 	@ConfigSection(
 		name = "Field notes",
 		description = "A local record for checking the plugin's guesses",

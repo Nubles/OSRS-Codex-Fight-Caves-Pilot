@@ -1,6 +1,9 @@
 package com.codex.fightcaves;
 
 import com.codex.fightcaves.notes.FieldNotes;
+import com.codex.fightcaves.arena.Arena;
+import com.codex.fightcaves.arena.ArenaLog;
+import com.codex.fightcaves.arena.ArenaTracker;
 import com.codex.fightcaves.core.Banked;
 import com.codex.fightcaves.core.CaveMap;
 import com.codex.fightcaves.core.ClockTrust;
@@ -92,7 +95,7 @@ import org.slf4j.LoggerFactory;
 @PluginDescriptor(
 	name = "Codex Fight Caves Pilot",
 	description = "Reads your Fight Cave rotation from the first spawns, races your best run wave by wave, counts the supplies each wave took and reports where a run lost time",
-	tags = {"fight caves", "fight cave", "tzhaar", "fire cape", "rotation", "waves", "splits", "ghost", "supplies", "codex"}
+	tags = {"fight caves", "fight cave", "tzhaar", "fire cape", "rotation", "waves", "splits", "ghost", "supplies", "inferno", "colosseum", "fortis colosseum", "codex"}
 )
 public class CodexFightCavesPilotPlugin extends Plugin
 {
@@ -108,6 +111,8 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	/** Ticks between the last clock read outside and entering the cave for it to count as the entry. */
 	private static final int CLOCK_ENTRY_TICKS = 5;
 	private static final String LOGBOOK_KEY = "logbook";
+	/** The Inferno and Colosseum run logs, saved per account beside the logbook. */
+	static final String ARENAS_KEY = "arenas";
 	/** Where a save this version could not keep whole is put aside, once, before it is overwritten. */
 	private static final String BACKUP_KEY = "logbookBackup";
 	/** Past this a save is far bigger than any the pilot writes, and is not copied aside. */
@@ -171,6 +176,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 	private RotationClock.Forecast forecast;
 	private Boolean forecastHit;
 	private final RotationTracker tracker = new RotationTracker();
+	/** Inferno and Colosseum attempts, read from the game's own wave lines. */
+	private final ArenaTracker arenas = new ArenaTracker();
+	private boolean arenasUnsaved;
+	/** Hitpoints on the last tick in an arena, or -1. */
+	private int arenaHp = -1;
 	private final Presence presence = new Presence();
 	/** A wave call heard on the tick you were moved in, before your tile said so. */
 	private final EarlyCall earlyCall = new EarlyCall();
@@ -387,7 +397,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		}
 		// The logbook itself is saved under the same group; its own saves need no redraw.
 		boolean ours = CodexFightCavesPilotConfig.GROUP.equals(event.getGroup())
-			&& !LOGBOOK_KEY.equals(event.getKey()) && !BACKUP_KEY.equals(event.getKey());
+			&& !LOGBOOK_KEY.equals(event.getKey()) && !BACKUP_KEY.equals(event.getKey()) && !ARENAS_KEY.equals(event.getKey());
 		boolean steward = Banked.STEWARD_GROUP.equals(event.getGroup()) && Banked.STEWARD_KEY.equals(event.getKey());
 		if (ours || steward)
 		{
@@ -421,11 +431,26 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			died = true;
 		}
+		Arena here = event.getActor() == client.getLocalPlayer() ? hereArena() : null;
+		if (here != null)
+		{
+			arenas.death(here, System.currentTimeMillis());
+			saveArenas();
+			publish(true);
+		}
 	}
 
 	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied event)
 	{
+		if (event.getActor() == client.getLocalPlayer() && Damage.counts(event.getHitsplat().getHitsplatType(), event.getHitsplat().getAmount()))
+		{
+			Arena here = hereArena();
+			if (here != null)
+			{
+				arenas.damage(here, System.currentTimeMillis());
+			}
+		}
 		if (!inCave || book == null || book.active == null || event.getActor() != client.getLocalPlayer())
 		{
 			return;
@@ -475,6 +500,13 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			return;
 		}
+		if (config.arenaLogs() && profile != null && arenas.chat(event.getMessage(), hereArena(), System.currentTimeMillis()))
+		{
+			// The Inferno's and the Colosseum's own lines: never the Fight Cave's.
+			saveArenas();
+			publish(true);
+			return;
+		}
 		String text = TAGS.matcher(event.getMessage()).replaceAll("");
 		Matcher wave = WAVE.matcher(text);
 		if (wave.find() && book != null)
@@ -519,6 +551,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		tick++;
+		tickArenas();
 		Player me = client.getLocalPlayer();
 		boolean known = me != null && me.getLocalLocation() != null;
 		// Physically in the cave this tick; a lone odd tick does not end the run (see Presence).
@@ -597,6 +630,37 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			save();
 		}
 		publish(false);
+	}
+
+	/** One tick of the arena logs: time on the wave, a death the event missed, leaving. */
+	private void tickArenas()
+	{
+		if (!config.arenaLogs())
+		{
+			return;
+		}
+		Arena here = hereArena();
+		long now = System.currentTimeMillis();
+		Arena openBefore = arenas.openArena();
+		arenas.tick(here, now);
+		if (here != null)
+		{
+			// A death the event missed still shows as hitpoints dropping to nothing.
+			int hp = client.getBoostedSkillLevel(Skill.HITPOINTS);
+			if (arenaHp > 0 && hp <= 0 && client.getRealSkillLevel(Skill.HITPOINTS) > 0)
+			{
+				arenas.death(here, now);
+			}
+			arenaHp = hp;
+		}
+		else
+		{
+			arenaHp = -1;
+		}
+		if (openBefore != arenas.openArena())
+		{
+			saveArenas();
+		}
 	}
 
 	// The cave.
@@ -1382,10 +1446,13 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		profile = configManager.getRSProfileKey();
 		book = null;
 		int generation = ++loadGeneration;
+		arenas.load(null);
+		arenasUnsaved = false;
 		if (profile == null)
 		{
 			return;
 		}
+		arenas.load(ArenaLog.read(gson, configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, ARENAS_KEY)));
 		String saved = configManager.getRSProfileConfiguration(CodexFightCavesPilotConfig.GROUP, LOGBOOK_KEY);
 		if (saved == null || saved.length() < Logbook.LARGE)
 		{
@@ -1448,6 +1515,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 
 	private void save()
 	{
+		saveArenas();
 		if (profile == null || book == null || !unsaved)
 		{
 			return;
@@ -1457,6 +1525,41 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		String json = gson.toJson(book);
 		unsaved = false;
 		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, LOGBOOK_KEY, json);
+	}
+
+	private void saveArenas()
+	{
+		if (arenas.takeChanged())
+		{
+			arenasUnsaved = true;
+		}
+		if (profile == null || !arenasUnsaved)
+		{
+			return;
+		}
+		String json = gson.toJson(arenas.getLog());
+		arenasUnsaved = false;
+		configManager.setConfiguration(CodexFightCavesPilotConfig.GROUP, profile, ARENAS_KEY, json);
+	}
+
+	/**
+	 * The Inferno or Colosseum when you stand in it, by your own tile mapped back out of the
+	 * instance (as RuneLite's Discord plugin reads its regions), or null.
+	 */
+	private Arena hereArena()
+	{
+		if (!config.arenaLogs() || client.getGameState() != GameState.LOGGED_IN)
+		{
+			return null;
+		}
+		Player me = client.getLocalPlayer();
+		LocalPoint lp = me == null ? null : me.getLocalLocation();
+		if (lp == null)
+		{
+			return null;
+		}
+		WorldPoint p = WorldPoint.fromLocalInstance(client, lp);
+		return p == null ? null : Arena.ofRegion(p.getRegionID());
 	}
 
 	private void chat(String text)
@@ -1511,6 +1614,11 @@ public class CodexFightCavesPilotPlugin extends Plugin
 			return;
 		}
 		View view = buildView(true);
+		if (config.arenaLogs() && view.getState() != View.State.LOGGED_OUT)
+		{
+			Arena here = hereArena();
+			view.withArenas(arenas.getLog().copy(gson), here, arenas.inWave(here), arenas.betweenWaves(here), config.colosseumLootNote());
+		}
 		updatePlaque(view);
 		lastViewKey = key;
 		if (target != null)
@@ -1526,6 +1634,7 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		if (p != null)
 		{
 			p.jadWave(inCave && book != null && book.active != null && book.active.wave >= Waves.JAD);
+			p.arenaWave(arenas.inWave(hereArena()));
 		}
 	}
 
@@ -1647,6 +1756,24 @@ public class CodexFightCavesPilotPlugin extends Plugin
 		{
 			// The run clock ticks on the panel every five seconds or so.
 			k.append('t').append(tick / 8);
+		}
+		if (config.arenaLogs())
+		{
+			Arena here = hereArena();
+			Arena open = arenas.openArena();
+			k.append('a').append(here).append(open).append(arenas.inWave(here)).append(arenas.betweenWaves(here))
+				.append(arenas.getLog().inferno.runs.size()).append('/').append(arenas.getLog().colosseum.runs.size())
+				.append(config.colosseumLootNote());
+			if (open != null)
+			{
+				ArenaLog.Run r = arenas.getLog().book(open).active;
+				k.append(r.reached).append('/').append(r.cleared).append(arenas.getLog().book(open).paused);
+				if (here != null)
+				{
+					// The plain run clock, every five seconds or so.
+					k.append('t').append(tick / 8);
+				}
+			}
 		}
 		return k.toString();
 	}
