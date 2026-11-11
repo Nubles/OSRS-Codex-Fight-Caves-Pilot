@@ -78,7 +78,8 @@ public class CaveChart extends JComponent
 		RoundRectangle2D frame = new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, Theme.RADIUS, Theme.RADIUS);
 		g.setColor(Theme.INK_DEEP);
 		g.fill(frame);
-		g.setClip(frame);
+		java.awt.Shape clip = g.getClip();
+		g.clip(frame);
 		g.setPaint(new RadialGradientPaint(w / 2f, h * 0.55f, Math.max(w, h) * 0.7f, new float[]{0, 1},
 			new Color[]{Theme.alpha(Theme.BLOOD_DEEP, 120), Theme.alpha(Theme.INK_DEEP, 0)}));
 		g.fillRect(0, 0, w, h);
@@ -139,7 +140,7 @@ public class CaveChart extends JComponent
 		paintWave(g, faint, true, left, top, cw, ch);
 		paintWave(g, wave, false, left, top, cw, ch);
 
-		g.setClip(null);
+		g.setClip(clip);
 		g.setFont(Theme.small());
 		Ui.shadowed(g, caption, 9, 4 + small.getAscent(), Theme.GOLD);
 		if (!corner.isEmpty())

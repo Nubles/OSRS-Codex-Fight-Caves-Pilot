@@ -77,13 +77,27 @@ public class PilotPlaque extends Overlay
 	}
 
 	@Override
-	public Dimension render(Graphics2D g)
+	public Dimension render(Graphics2D graphics)
 	{
 		Shown s = shown;
 		if (s == null)
 		{
 			return null;
 		}
+		// Drawn on a copy: the hints, font and paint the plaque sets never reach the renderer.
+		Graphics2D g = (Graphics2D) graphics.create();
+		try
+		{
+			return paint(g, s);
+		}
+		finally
+		{
+			g.dispose();
+		}
+	}
+
+	private Dimension paint(Graphics2D g, Shown s)
+	{
 		Theme.smooth(g);
 		g.setFont(Theme.title());
 		FontMetrics bold = g.getFontMetrics();
