@@ -163,11 +163,12 @@ class RunScroll extends JPanel
 		g.setPaint(new GradientPaint(0, 0, Theme.CARD_TOP, 0, h, Theme.INK_DEEP));
 		g.fill(shape);
 		// The cave's glow from below, warmer for a cape.
-		g.setClip(shape);
+		java.awt.Shape clip = g.getClip();
+		g.clip(shape);
 		g.setPaint(new RadialGradientPaint(w / 2f, 64, w * 0.62f, new float[]{0, 1},
 			new Color[]{Theme.alpha(cape ? Theme.EMBER : Theme.BLOOD_DEEP, cape ? 46 : 40), Theme.alpha(Theme.INK_DEEP, 0)}));
 		g.fillRect(0, 0, w, h);
-		g.setClip(null);
+		g.setClip(clip);
 
 		// A double gilt rule with a diamond at each corner, like the edge of an illuminated page.
 		Color rim = cape ? Theme.GOLD : Theme.GOLD_DIM;

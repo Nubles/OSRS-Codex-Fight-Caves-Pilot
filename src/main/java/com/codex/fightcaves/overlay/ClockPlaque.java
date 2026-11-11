@@ -86,7 +86,16 @@ public class ClockPlaque extends Overlay
 		}
 		long since = System.currentTimeMillis() - s.readAt;
 		int run = (int) Math.max(0, Math.min(RUN_ON, since / 1000));
-		return paint(g, s.reading.plus(run), s.picks, s.doubt);
+		// Drawn on a copy: the clip, hints, font and paint the plaque sets never reach the renderer.
+		Graphics2D copy = (Graphics2D) g.create();
+		try
+		{
+			return paint(copy, s.reading.plus(run), s.picks, s.doubt);
+		}
+		finally
+		{
+			copy.dispose();
+		}
 	}
 
 	/** Draws the plaque at a moment of the clock; also used for previews. */
